@@ -10,7 +10,7 @@
 
 enum mat_enum { LAND, OCEAN, HILL, BERTH };
 enum robot_enum { NOTHING, TO_OBJ, TO_SHIP, RECOVERY };
-enum robot_mov { ROBOT_MOV, ROBOT_GET, ROBOT_PULL, ROBOT_RECOVER };
+enum robot_mov { ROBOT_MOV, ROBOT_GET, ROBOT_PULL, ROBOT_RECOVER, ROBOT_TICK };
 enum ship_enum { SHIPPING, NORMAL, WAITING };
 
 const int robot_num = 10;
@@ -46,20 +46,40 @@ public:
     int x, y, value, time_appear, obtain;
 };
 std::vector<Obj> objects;
+void remove_outdated_obj(int frame_id) {
+    std::vector<Obj>::iterator it = objects.begin();
+    while (it != objects.end()) {
+        if (it->time_appear + 1000 < frame_id) {
+            mat[it->x][it->y].has_obj = false;
+            it++;
+        }
+        else break;
+    }
+    objects.erase(objects.begin(), it);
+    fprintf(stderr, "# Frame %d objects.size() = %lu\n", frame_id, objects.size());
+}
 
 std::shared_ptr<std::vector<int> > get_path(int ux, int uy, int vx, int vy);
 class Robot {
 public:
     Robot() {}
-    Robot(int _x, int _y, int _id) : x(_x), y(_y), id(_id), status(NOTHING) {}
+    Robot(int _x, int _y, int _id) : x(_x), y(_y), id(_id), status(NOTHING), frame(1) {}
 
     void calc_want() {
         if (status == NOTHING) {
             fprintf(stderr, "# Robot %d resting, assign obj\n", id);
-            int obj_x = (objects.end()-1)->x;
-            int obj_y = (objects.end()-1)->y;
-            objects.pop_back();
-            calc_path_to_obj(obj_x, obj_y);
+            int obj_id = calc_best_obj();
+
+            if (obj_id == -1) {
+                fprintf(stderr, "# Robot %d assign error, NO Object\n", id);
+                want_mov = ROBOT_TICK;
+                return;
+            }
+
+            Obj obj = objects[obj_id];
+            objects.erase(objects.begin() + obj_id);
+
+            calc_path_to_obj(obj.x, obj.y);
             fprintf(stderr, "# Robot %d assign finish\n", id);
             status = TO_OBJ;
         }
@@ -78,7 +98,7 @@ public:
             if (mat[x][y].has_obj) {
                 want_mov = ROBOT_GET;
                 want_dir = 5;
-                get_dest_berth();
+                calc_best_berth();
             }
             else {
                 fprintf(stderr, "# Robot %d ERROR, No obj found at (%d,%d)!\n", id, x, y);
@@ -111,6 +131,7 @@ public:
     }
 
     void move() {
+        frame++;
         switch (want_mov) {
             case ROBOT_MOV:
                 printf("move %d %d\n", id, want_dir);
@@ -121,6 +142,8 @@ public:
             case ROBOT_GET:
                 printf("get %d\n", id);
                 fprintf(stderr, "# ROBOT %d get\n", id);
+                mat[x][y].has_obj = false;
+                calc_best_berth();
                 status = TO_SHIP;
                 break;
             case ROBOT_PULL:
@@ -131,6 +154,9 @@ public:
             case ROBOT_RECOVER:
                 fprintf(stderr, "# ROBOT %d recovering\n", id);
                 break;
+            case ROBOT_TICK:
+                fprintf(stderr, "# ROBOT %d waiting...\n", id);
+                break;
         }
     }
 
@@ -138,13 +164,27 @@ public:
         moves = get_path(x, y, obj_x, obj_y);
     }
 
-    void get_dest_berth() {
-        dest_berth = 1;
+    void calc_best_berth() {
+        int min_dis = inf_dist, min_berth = -1;
+        for (int i = 0; i < berth_num; ++i) {
+            if (min_dis > mat[x][y].dist[i]) {
+                min_dis = mat[x][y].dist[i];
+                min_berth = i;
+            }
+        }
+        dest_berth = min_berth;
     }
 
-    void update(int _carry, int _x, int _y, int status_code) {
+    void update(int _carry, int _x, int _y, int status_code, int _frame) {
+        if (_x != x || _y != y || _frame != frame) {
+            fprintf(stderr, "# ROBOT %d Sync Error\n", id);
+            fprintf(stderr, "# rec: (%d, %d) %d\n", x, y, frame);
+            fprintf(stderr, "# get: (%d, %d) %d\n", _x, _y, _frame);
+        }
+        x = _x; y = _y; frame = _frame;
+
         if (status_code == 0) {
-            fprintf(stderr, "# ROBOT %d err\n", id);
+            fprintf(stderr, "# ROBOT %d get Error\n", id);
             if (status == RECOVERY) return;
             status = RECOVERY;
             moves->push_back(want_dir);
@@ -166,7 +206,24 @@ public:
         pre_status = status_code;
     }
 
-    int id, x, y, status, pre_status;
+    int calc_best_obj() {
+        // 简单以最近的来选
+        int min_dis = inf_dist, res = -1;
+        int obj_x, obj_y, obj_dis;
+        for (int i = 0; i < objects.size(); ++i) {
+            obj_x = objects[i].x;
+            obj_y = objects[i].y;
+            obj_dis = mat[obj_x][obj_y].dist[dest_berth];
+            if (objects[i].time_appear + 1000 < frame + obj_dis) continue;
+            if (min_dis > obj_dis) {
+                min_dis = obj_dis;
+                res = i;
+            }
+        }
+        return res;
+    }
+
+    int id, x, y, status, pre_status, frame;
     int want_dir, dest_berth;
     robot_mov want_mov;
     std::shared_ptr<std::vector<int> > moves = std::make_shared<std::vector<int> >();
@@ -301,7 +358,7 @@ void Init() {
         fprintf(stderr, "robot %d: (%d, %d)\n", r, robot[r].x, robot[r].y);
     }
     for (int i = 0; i < 10; ++i) {
-        fprintf(stderr, "berth %d %d %d %d %d\n", berth[i].id, berth[i].x, berth[i].y, berth[i].transport_time, berth[i].velocity);
+        fprintf(stderr, "berth %d: (%d, %d) t:%d v:%d\n", berth[i].id, berth[i].x, berth[i].y, berth[i].transport_time, berth[i].velocity);
     }
     fprintf(stderr, "capacity %d\n", ship_capacity);
     fprintf(stderr, "OK from Judge: %s\n", okk);
@@ -347,7 +404,7 @@ void Input(int &frame_id) {
     int carry, status; // 还有x, y
     for (int i = 0; i < 10; ++i) {
         scanf("%d%d%d%d", &carry, &x, &y, &status);
-        robot[i].update(carry, x, y, status);
+        robot[i].update(carry, x, y, status, frame_id);
     }
 
     // 当前的船信息
@@ -416,7 +473,7 @@ std::shared_ptr<std::vector<int> > get_path(int ux, int uy, int vx, int vy) {
         dis[p.x][p.y] = p.dr;
 
         if (p.x == ux && p.y == uy) {
-            fprintf(stderr, "Dijk Early Stop!!\n");
+//            fprintf(stderr, "Dijk Early Stop!!\n");
             break;
         }
 
@@ -441,15 +498,15 @@ std::shared_ptr<std::vector<int> > get_path(int ux, int uy, int vx, int vy) {
     pqueue2 = std::priority_queue<PQnode2>();
 
 #ifdef DEBUG_FLAG
-    fprintf(stderr, "#DEBUG get_path() final dist: %d\n", dis[ux][uy]);
-    for (int i = 0; i < 200; ++i) {
-        for (int j = 0; j < 200; ++j) {
-            int x = dis[i][j];
-            if (x == inf_dist) x = -1;
-            fprintf(stderr, "%4d", x);
-        }
-        fprintf(stderr, "\n");
-    }
+    fprintf(stderr, "#3 get_path() final dist: %d\n", dis[ux][uy]);
+//    for (int i = 0; i < 200; ++i) {
+//        for (int j = 0; j < 200; ++j) {
+//            int x = dis[i][j];
+//            if (x == inf_dist) x = -1;
+//            fprintf(stderr, "%4d", x);
+//        }
+//        fprintf(stderr, "\n");
+//    }
     fflush(stderr);
 #endif
 
@@ -556,13 +613,6 @@ void Calc() {
     fflush(stderr);
 }
 
-void Output() {
-    for (int i = 3; i < 10; ++i) {
-        fprintf(stdout, "move %d %d\n", i, (rand() + 1) % 4);
-    }
-    fprintf(stdout, "OK\n");
-    fflush(stdout);
-}
 
 int main() {
     fprintf(stderr, "#0 Program start");
@@ -572,10 +622,12 @@ int main() {
         if (frame == 0) printf("ship 0 1\n");
         if (frame == 10000) printf("go 0\n");
         Input(frame_id);
+        remove_outdated_obj(frame_id);
 //        Calc();
-        for (int i = 0; i < 2; ++i) robot[i].calc_want();
-        for (int i = 0; i < 2; ++i) robot[i].move();
-        Output();
+        for (int i = 0; i < 10; ++i) robot[i].calc_want();
+        for (int i = 0; i < 10; ++i) robot[i].move();
+        fprintf(stdout, "OK\n");
+        fflush(stdout);
     }
     return 0;
 }
