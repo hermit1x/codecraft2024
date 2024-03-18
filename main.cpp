@@ -6,6 +6,7 @@
 #include <time.h>
 
 #define DEBUG_FLAG
+#define G 16
 #define min(x, y) ((x) < (y) ? (x) : (y))
 
 enum mat_enum { LAND, OCEAN, HILL, BERTH };
@@ -24,6 +25,13 @@ int tot_value = 0;
 const int mov_x[6] = {0, 0, -1, 1, 0, 0};
 const int mov_y[6] = {1, -1, 0, 0, 0, 0};
 
+inline int dis_man(int ax, int ay, int bx, int by) {
+    return abs(ax - bx) + abs(ay - by);
+}
+
+inline int dis_oc(int ax, int ay, int bx, int by) {
+    return abs(ax - bx)*abs(ax - bx) + abs(ay - by)*abs(ay - by);
+}
 
 inline bool in_mat(int x, int y) {
     return 0 <= x && x < 200 && 0 <= y && y < 200;
@@ -42,7 +50,7 @@ inline bool is_land(int x, int y) {
 
 class Obj {
 public:
-    Obj() {};
+    Obj(): x(-1), y(-1) {};
     Obj(int _x, int _y, int _value, int _t) : x(_x), y(_y), value(_value), time_appear(_t), obtain(0) {};
 
     int x, y, value, time_appear, obtain;
@@ -70,7 +78,18 @@ public:
     int stock;
 }berth[berth_num+1];
 
-std::shared_ptr<std::vector<int> > get_path(int ux, int uy, int vx, int vy);
+struct PQnode2 {
+    PQnode2() {};
+    PQnode2(int _x, int _y, int _d, int _dr) : x(_x), y(_y), d(_d), dr(_dr) {};
+    int x, y, d, dr; // dist real
+
+    bool operator < (const PQnode2 &x) const {
+        return d > x.d;
+    }
+};
+std::priority_queue<PQnode2> pqueue2;
+
+int calc_force(int id, int tx, int ty);
 class Robot {
 public:
     Robot() {}
@@ -88,7 +107,7 @@ public:
                 return;
             }
 
-            Obj obj = objects[obj_id];
+            obj = objects[obj_id];
             tot_value += obj.value;
             fprintf(stderr, "OBJ VALUE: %d\n", obj.value);
             objects.erase(objects.begin() + obj_id);
@@ -102,21 +121,52 @@ public:
             want_dir = 5;
             return;
         }
-        if (!moves->empty()) {
-            want_mov = ROBOT_MOV;
-            want_dir = *(moves->end() - 1);
-            moves->pop_back();
-            return;
-        }
+//        if (!moves->empty()) {
+//            want_mov = ROBOT_MOV;
+//            want_dir = *(moves->end() - 1);
+//            moves->pop_back();
+//            return;
+//        }
         if (status == TO_OBJ) {
-            if (mat[x][y].has_obj) {
+            if (dis[x][y] == 0 && mat[x][y].has_obj) {
                 want_mov = ROBOT_GET;
                 want_dir = 5;
                 calc_best_berth();
+                return;
             }
-            else {
+            else if (dis[x][y] == 0) {
                 fprintf(stderr, "# Robot %d ERROR, No obj found at (%d,%d)!\n", id, x, y);
+                status = NOTHING;
+                want_mov = ROBOT_TICK;
+                want_dir = 5;
+                return;
             }
+            if (dis[x][y] == inf_dist) {
+                calc_path_to_obj(obj.x, obj.y);
+                return;
+            }
+            // 用人工势场法避障
+            if (calc_force(id, x, y) > 3) {
+                calc_path_to_obj(obj.x, obj.y);
+                return;
+            }
+            int dir = 5, min_dis = inf_dist;
+            int cur_dist = dis[x][y], tx, ty, tf;
+            int rand_base = rand();
+            for (int i, j = 0; j < 4; ++j) {
+                i = (rand_base + j) % 4;
+                tx = x + mov_x[i];
+                ty = y + mov_y[i];
+                if (in_mat(tx, ty) && is_land(tx, ty)) {
+                    tf = calc_force(id, tx, ty);
+                    if (min_dis > (dis[tx][ty] - cur_dist) + tf) {
+                        min_dis = (dis[tx][ty] - cur_dist) + tf;
+                        dir = i;
+                    }
+                }
+            }
+            want_mov = ROBOT_MOV;
+            want_dir = dir;
             return;
         }
         if (status == TO_SHIP) {
@@ -128,13 +178,21 @@ public:
                 want_dir = 5;
                 return;
             }
-            int dir = 5;
+            int dir = 5, min_dis = inf_dist;
+            // 用人工势场法避障
+            int cur_f = calc_force(id, x, y), tx, ty, tf;
+            cur_f = 0;
             int rand_base = rand();
             for (int i, j = 0; j < 4; ++j) {
                 i = (rand_base + j) % 4;
-                if (mat[x+mov_x[i]][y+mov_y[i]].dist[dest_berth] == cur_dist - 1) {
-                    dir = i;
-                    break;
+                tx = x + mov_x[i];
+                ty = y + mov_y[i];
+                if (in_mat(tx, ty) && is_land(tx, ty)) {
+                    tf = calc_force(id, tx, ty);
+                    if (min_dis > (mat[tx][ty].dist[dest_berth] - cur_dist) + (tf - cur_f)) {
+                        min_dis = (mat[tx][ty].dist[dest_berth] - cur_dist) + (tf - cur_f);
+                        dir = i;
+                    }
                 }
             }
             if (dir == 5) {
@@ -176,19 +234,83 @@ public:
         }
     }
 
-    void calc_path_to_obj(int obj_x, int obj_y) {
-        moves = get_path(x, y, obj_x, obj_y);
+    void calc_path_to_obj(int vx, int vy) {
+//        moves = get_path(x, y, obj_x, obj_y);
+        /* A* 寻路，评估权重是 已经走的距离+曼哈顿距离
+         * 同时存下来搜的时候的距离矩阵，供人工势场
+         * */
+        for (int i = 0; i < 200; ++i) {
+            for (int j = 0; j < 200; ++j) {
+                dis[i][j] = inf_dist;
+                vis[i][j] = 0;
+            }
+        }
+
+        pqueue2.push(PQnode2(vx, vy, 0, 0));
+        int tx, ty;
+        while (!pqueue2.empty()) {
+            PQnode2 p = pqueue2.top();
+            pqueue2.pop();
+//        fprintf(stderr, "PQ2 loop: (%d, %d): %d\n", p.x, p.y, p.dr);
+            if (vis[p.x][p.y]) continue;
+            vis[p.x][p.y] = 1;
+            dis[p.x][p.y] = p.dr;
+
+            if (p.x == x && p.y == y) {
+//            fprintf(stderr, "Dijk Early Stop!!\n");
+                break;
+            }
+
+            int rand_base = rand() % 4;
+            for (int i, j = 0; j < 4; ++j) {
+                i = (rand_base + j) % 4;
+                tx = p.x + mov_x[i];
+                ty = p.y + mov_y[i];
+
+                if (in_mat(tx, ty) && is_land(tx, ty)) {
+                    if (p.dr < dis[tx][ty]) {
+                        pqueue2.push(PQnode2(
+                                tx, ty,
+                                p.dr + 2 * dis_man(tx, ty, x, y) + calc_force(id, tx, ty), // 加入曼哈顿距离，A star 思想
+                                p.dr + 1));
+                    }
+                }
+            }
+        }
+
+        while (!pqueue2.empty()) {
+            PQnode2 p = pqueue2.top();
+            pqueue2.pop();
+            if (vis[p.x][p.y]) continue;
+            vis[p.x][p.y] = 1;
+            dis[p.x][p.y] = p.dr;
+        }
+
+#ifdef DEBUG_FLAG
+//    fprintf(stderr, "#3 get_path() final dist: %d\n", dis[x][y]);
+//    for (int i = 0; i < 200; ++i) {
+//        for (int j = 0; j < 200; ++j) {
+//            int x = dis[i][j];
+//            if (x == inf_dist) x = -1;
+//            fprintf(stderr, "%4d", x);
+//        }
+//        fprintf(stderr, "\n");
+//    }
+//    fflush(stderr);
+#endif
+
     }
 
     void calc_best_berth() {
-        int min_dis = inf_dist, min_berth = -1;
-        for (int i = 0; i < berth_num; ++i) {
-            if (min_dis > mat[x][y].dist[i]) {
-                min_dis = mat[x][y].dist[i];
-                min_berth = i;
-            }
-        }
-        dest_berth = min_berth;
+//        int min_dis = inf_dist, min_berth = -1;
+//        for (int i = 0; i < berth_num; ++i) {
+//            if (min_dis > mat[x][y].dist[i]) {
+//                min_dis = mat[x][y].dist[i];
+//                min_berth = i;
+//            }
+//        }
+//        dest_berth = min_berth;
+        dest_berth = 0;
     }
 
     void update(int _carry, int _x, int _y, int status_code, int _frame) {
@@ -264,23 +386,40 @@ public:
 //        fprintf(stderr, "# ROBOT %d assign: %d\n", id, dir);
     }
 
+
+
     int id, x, y, frame, pre_status;
     int want_dir, dest_berth;
+    int dis[201][201], vis[201][201];
+    Obj obj;
     robot_enum status;
     robot_mov want_mov;
     std::shared_ptr<std::vector<int> > moves = std::make_shared<std::vector<int> >();
 } robot[robot_num+1];
 int robot_cnt = 0;
 
+int calc_force(int id, int tx, int ty) {
+    int f = 0, d;
+    for (int i = 0; i < id; ++i) {
+//        if (i == id) continue;
+        d = dis_man(tx, ty, robot[i].x, robot[i].y);
+        f += G / (d*d);
+        d = dis_man(tx, ty, robot[i].x + mov_x[robot[i].want_dir], robot[i].y + mov_y[mov_x[robot[i].want_dir]]);
+        f += G / (d*d);
+    }
+    return f;
+}
+
 void handle_conflict() {
 //    fprintf(stderr, "#3 Handle Conflict\n");
-// TODO: 人工势场法
     static int m[201][201];
     for (int i = 0; i < 200; ++i) {
         for (int j = 0; j < 200; ++j) {
             m[i][j] = 0;
         }
     }
+    // 算势场
+
     /* 1. 有货的优先
      * 2. id小的优先
      * */
@@ -312,8 +451,11 @@ void handle_conflict() {
             continue;
         }
         else {
-
             int rand_base = rand();
+//            int rand_base;
+//            if (rdir == 0 || rdir == 1) rand_base = 2; // 先向自己左手边走
+//            if (rdir == 2) rand_base = 3;
+//            if (rdir == 2) rand_base = 1;
             for (int k = 0, j; k < 5; ++k) {
                 if (k == 4) {
                     robot[ri].assign(j);
@@ -363,17 +505,23 @@ public:
             status = _status;
             berth_id = _id;
         }
-        return ;
         if (status == SHIP_NORMAL) {
             if (berth_id == -1) {
-                for (int i = 0; i < berth_num; ++i) {
-                    if (berth[i].occupy == 0) {
-                        berth[i].occupy = 1;
-                        fprintf(stderr, "#SHIP %d CAME %d\n", id, i);
-                        berth_id = i;
-                        state_code = SHIP_SHIPPING;
-                        return;
-                    }
+//                for (int i = 0; i < berth_num; ++i) {
+//                    if (berth[i].occupy == 0) {
+//                        berth[i].occupy = 1;
+//                        fprintf(stderr, "#SHIP %d CAME %d\n", id, i);
+//                        berth_id = i;
+//                        state_code = SHIP_SHIPPING;
+//                        return;
+//                    }
+//                }
+                if (!berth[0].occupy) {
+                    fprintf(stderr, "#SHIP %d CAME %d\n", id, 0);
+                    printf("ship %d %d\n", id, 0);
+                    berth_id = 0;
+                    state_code = SHIP_SHIPPING;
+                    return;
                 }
             }
             // 在泊位上
@@ -572,108 +720,93 @@ void Input(int &frame_id) {
 }
 
 
-struct PQnode2 {
-    PQnode2() {};
-    PQnode2(int _x, int _y, int _d, int _dr) : x(_x), y(_y), d(_d), dr(_dr) {};
-    int x, y, d, dr; // dist real
 
-    bool operator < (const PQnode2 &x) const {
-        return d > x.d;
-    }
-};
-std::priority_queue<PQnode2> pqueue2;
 
-std::shared_ptr<std::vector<int> > get_path(int ux, int uy, int vx, int vy) {
-//    fprintf(stderr, "#3 get_path() start (%d,%d)->(%d,%d)\n", ux, uy, vx, vy);
-    /* A* 寻路，评估权重是 已经走的距离+2*曼哈顿距离
-     * 返回的是一个倒装的数据，从v[-1]一个个到v[0]，表示是mov中的行动，从u走到v
-     * */
-    static int dis[201][201], vis[201][201];
-    for (int i = 0; i < 200; ++i) {
-        for (int j = 0; j < 200; ++j) {
-            dis[i][j] = inf_dist;
-            vis[i][j] = 0;
-        }
-    }
-
-    // 这里的最短路是从v（目的地）开始到u的最短路
-    // 回头从u开始通过爬梯子走到v，然后一个一个push，最后最后再reverse一下
-//    dis[vx][vy] = 0;
-    pqueue2.push(PQnode2(vx, vy, 0, 0));
-    int tx, ty;
-    while (!pqueue2.empty()) {
-        PQnode2 p = pqueue2.top();
-        pqueue2.pop();
-//        fprintf(stderr, "PQ2 loop: (%d, %d): %d\n", p.x, p.y, p.dr);
-        if (vis[p.x][p.y]) continue;
-        vis[p.x][p.y] = 1;
-        dis[p.x][p.y] = p.dr;
-
-        if (p.x == ux && p.y == uy) {
-//            fprintf(stderr, "Dijk Early Stop!!\n");
-            break;
-        }
-
-        int rand_base = rand() % 4;
-        for (int i, j = 0; j < 4; ++j) {
-            i = (rand_base + j) % 4;
-            tx = p.x + mov_x[i];
-            ty = p.y + mov_y[i];
-
-            if (in_mat(tx, ty) && is_land(tx, ty)) {
-                if (p.dr + 1 < dis[tx][ty]) {
-                    pqueue2.push(PQnode2(
-                            tx, ty,
-                            p.dr + 2 * (abs(tx-ux) + abs(ty-uy)), // 加入曼哈顿距离，A star 思想
-                            p.dr + 1));
-                }
-            }
-        }
-    }
-
-    while (!pqueue2.empty()) pqueue2.pop();
-//    pqueue2 = std::priority_queue<PQnode2>();
-
-#ifdef DEBUG_FLAG
-//    fprintf(stderr, "#3 get_path() final dist: %d\n", dis[ux][uy]);
-//    for (int i = 0; i < 200; ++i) {
-//        for (int j = 0; j < 200; ++j) {
-//            int x = dis[i][j];
-//            if (x == inf_dist) x = -1;
-//            fprintf(stderr, "%4d", x);
+//std::shared_ptr<std::vector<int> > get_path(int ux, int uy, int vx, int vy) {
+////    fprintf(stderr, "#3 get_path() start (%d,%d)->(%d,%d)\n", ux, uy, vx, vy);
+//    /* A* 寻路，评估权重是 已经走的距离+2*曼哈顿距离
+//     * 返回的是一个倒装的数据，从v[-1]一个个到v[0]，表示是mov中的行动，从u走到v
+//     * */
+//
+//
+//    // 这里的最短路是从v（目的地）开始到u的最短路
+//    // 回头从u开始通过爬梯子走到v，然后一个一个push，最后最后再reverse一下
+////    dis[vx][vy] = 0;
+//    pqueue2.push(PQnode2(vx, vy, 0, 0));
+//    int tx, ty;
+//    while (!pqueue2.empty()) {
+//        PQnode2 p = pqueue2.top();
+//        pqueue2.pop();
+////        fprintf(stderr, "PQ2 loop: (%d, %d): %d\n", p.x, p.y, p.dr);
+//        if (vis[p.x][p.y]) continue;
+//        vis[p.x][p.y] = 1;
+//        dis[p.x][p.y] = p.dr;
+//
+//        if (p.x == x && p.y == y) {
+////            fprintf(stderr, "Dijk Early Stop!!\n");
+//            break;
 //        }
-//        fprintf(stderr, "\n");
+//
+//        int rand_base = rand() % 4;
+//        for (int i, j = 0; j < 4; ++j) {
+//            i = (rand_base + j) % 4;
+//            tx = p.x + mov_x[i];
+//            ty = p.y + mov_y[i];
+//
+//            if (in_mat(tx, ty) && is_land(tx, ty)) {
+//                if (p.dr + 1 < dis[tx][ty]) {
+//                    pqueue2.push(PQnode2(
+//                            tx, ty,
+//                            p.dr + 2 * dis_man(tx, ty, x, y), // 加入曼哈顿距离，A star 思想
+//                            p.dr + 1));
+//                }
+//            }
+//        }
 //    }
-    fflush(stderr);
-#endif
-
-    // 从u一路下降走到v
-    std::shared_ptr<std::vector<int> > ret = std::make_shared<std::vector<int> >();
-    while (!(ux == vx && uy == vy)) {
-        for (int i = 0; i < 5; ++i) {
-            if (i == 4) {
-                fprintf(stderr, "#ERROR# NO WAY (%d, %d)->(%d, %d)\n", ux, uy, vx, vy);
-                return ret;
-            }
-            tx = ux + mov_x[i];
-            ty = uy + mov_y[i];
-            if (in_mat(tx, ty) && is_land(tx, ty)) {
-                if (dis[tx][ty] == dis[ux][uy]-1) {
-//                fprintf(stderr, "GO dis: %d\n", dis[tx][ty]);
-                    ret->push_back(i);
-                    ux = tx;
-                    uy = ty;
-                    break;
-                }
-            }
-        }
-    }
-    std::reverse(ret->begin(), ret->end());
-#ifdef DEBUG_FLAG
-//    fprintf(stderr, "#2 Generate path, len: %d\n", (int)(ret->size()));
-#endif
-    return ret; // 从后往前，可以从u走到v
-}
+//
+//    while (!pqueue2.empty()) pqueue2.pop();
+////    pqueue2 = std::priority_queue<PQnode2>();
+//
+//#ifdef DEBUG_FLAG
+////    fprintf(stderr, "#3 get_path() final dist: %d\n", dis[ux][uy]);
+////    for (int i = 0; i < 200; ++i) {
+////        for (int j = 0; j < 200; ++j) {
+////            int x = dis[i][j];
+////            if (x == inf_dist) x = -1;
+////            fprintf(stderr, "%4d", x);
+////        }
+////        fprintf(stderr, "\n");
+////    }
+//    fflush(stderr);
+//#endif
+//
+//    // 从u一路下降走到v
+//    std::shared_ptr<std::vector<int> > ret = std::make_shared<std::vector<int> >();
+//    while (!(ux == vx && uy == vy)) {
+//        for (int i = 0; i < 5; ++i) {
+//            if (i == 4) {
+//                fprintf(stderr, "#ERROR# NO WAY (%d, %d)->(%d, %d)\n", ux, uy, vx, vy);
+//                return ret;
+//            }
+//            tx = ux + mov_x[i];
+//            ty = uy + mov_y[i];
+//            if (in_mat(tx, ty) && is_land(tx, ty)) {
+//                if (dis[tx][ty] == dis[ux][uy]-1) {
+////                fprintf(stderr, "GO dis: %d\n", dis[tx][ty]);
+//                    ret->push_back(i);
+//                    ux = tx;
+//                    uy = ty;
+//                    break;
+//                }
+//            }
+//        }
+//    }
+//    std::reverse(ret->begin(), ret->end());
+//#ifdef DEBUG_FLAG
+////    fprintf(stderr, "#2 Generate path, len: %d\n", (int)(ret->size()));
+//#endif
+//    return ret; // 从后往前，可以从u走到v
+//}
 
 
 int main() {
