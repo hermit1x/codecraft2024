@@ -64,9 +64,9 @@ int ship_capacity;
 class Obj {
 public:
     Obj() {};
-    Obj(int _x, int _y, int _value) : x(_x), y(_y), value(_value), obtain(0) {};
+    Obj(int _x, int _y, int _value, int _t) : x(_x), y(_y), value(_value), time_appear(_t), obtain(0) {};
 
-    int x, y, value, obtain;
+    int x, y, value, time_appear, obtain;
 };
 std::vector<Obj> objects;
 
@@ -207,28 +207,25 @@ void Input() {
     scanf("%d%d", &frame_id, &money);
     scanf("%d", &k);
 
-    fprintf(stderr, "#2 Input frame: %d, money: %d, k: %d\n", frame_id, money, k);
+//    fprintf(stderr, "#2 Input frame: %d, money: %d, k: %d\n", frame_id, money, k);
     // 新增的货物信息
     int x, y, value;
     for (int i = 0; i < k; ++i) {
         scanf("%d%d%d", &x, &y, &value);
-        objects.push_back(Obj(x, y, value));
+        objects.push_back(Obj(x, y, value, frame_id));
     }
 
-    fprintf(stderr, "#2 Input finish1\n");
     // 当前的机器人信息
     int carry, status; // 还有x, y
     for (int i = 0; i < 10; ++i) {
         scanf("%d%d%d%d", &carry, &x, &y, &status);
     }
 
-    fprintf(stderr, "#2 Input finish1\n");
     // 当前的船信息
     int dest_berth;
     for (int i = 0; i < 5; ++i) {
         scanf("%d%d", &status, &dest_berth);
     }
-    fprintf(stderr, "#2 Input finish1\n");
     char okk[100];
     scanf("%s", okk);
 
@@ -238,18 +235,18 @@ void Input() {
 #endif
 }
 
-int dist_robot_obj_fake(int rx, int ry, int ox, int oy) {
-    /*
-     * 重要函数，玄学评估机器人和物品的距离
-     * 目前采用的思路是：曼哈顿距离*20 + 每个港口的条件下两个点的距离差（表示层次接近）
-     * */
-    int sum = 20 * (abs(rx - ox) + abs(ry - oy)); // 曼哈顿距离
-    for (int i = 0; i < berth_num; ++i) {
-        sum += abs( mat[rx][ry].dist[i] - mat[ox][oy].dist[i] );
-    }
-
-    return sum;
-}
+//int dist_robot_obj_fake(int rx, int ry, int ox, int oy) {
+//    /*
+//     * 重要函数，玄学评估机器人和物品的距离
+//     * 目前采用的思路是：曼哈顿距离*20 + 每个港口的条件下两个点的距离差（表示层次接近）
+//     * */
+//    int sum = 20 * (abs(rx - ox) + abs(ry - oy)); // 曼哈顿距离
+//    for (int i = 0; i < berth_num; ++i) {
+//        sum += abs( mat[rx][ry].dist[i] - mat[ox][oy].dist[i] );
+//    }
+//
+//    return sum;
+//}
 
 
 struct PQnode2 {
@@ -302,9 +299,7 @@ std::shared_ptr<std::vector<int> > get_path(int ux, int uy, int vx, int vy) {
                 if (p.dr + 1 < dis[tx][ty]) {
                     pqueue2.push(PQnode2(
                             tx, ty,
-                            p.dr,
-//                            p.dr + (abs(tx-ux) + abs(ty-uy)),
-//                            p.dr * 30 + dist_robot_obj_fake(tx, ty, ux, uy),
+                            p.dr + 2 * (abs(tx-ux) + abs(ty-uy)), // 加入曼哈顿距离，A star 思想
                             p.dr + 1));
                 }
             }
@@ -315,14 +310,14 @@ std::shared_ptr<std::vector<int> > get_path(int ux, int uy, int vx, int vy) {
 
 #ifdef DEBUF_FLAG
     fprintf(stderr, "#DEBUG get_path() final dist: %d\n", dis[ux][uy]);
-//    for (int i = 0; i < 200; ++i) {
-//        for (int j = 0; j < 200; ++j) {
-//            int x = dis[i][j];
-//            if (x == inf_dist) x = -1;
-//            fprintf(stderr, "%4d", x);
-//        }
-//        fprintf(stderr, "\n");
-//    }
+    for (int i = 0; i < 200; ++i) {
+        for (int j = 0; j < 200; ++j) {
+            int x = dis[i][j];
+            if (x == inf_dist) x = -1;
+            fprintf(stderr, "%4d", x);
+        }
+        fprintf(stderr, "\n");
+    }
     fflush(stderr);
 #endif
 
