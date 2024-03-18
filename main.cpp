@@ -73,6 +73,7 @@ public:
             if (obj_id == -1) {
                 fprintf(stderr, "# Robot %d assign error, NO Object\n", id);
                 want_mov = ROBOT_TICK;
+                want_dir = 5;
                 return;
             }
 
@@ -111,6 +112,7 @@ public:
                 // 进入泊位
                 fprintf(stderr, "# Robot %d Enter Berth %d\n", id, dest_berth);
                 want_mov = ROBOT_PULL;
+                want_dir = 5;
                 return;
             }
             int dir = 5;
@@ -137,7 +139,7 @@ public:
                 printf("move %d %d\n", id, want_dir);
                 x += mov_x[want_dir];
                 y += mov_y[want_dir];
-                fprintf(stderr, "# ROBOT %d move: %d\n", id, want_dir);
+//                fprintf(stderr, "# ROBOT %d move: %d\n", id, want_dir);
                 break;
             case ROBOT_GET:
                 printf("get %d\n", id);
@@ -184,7 +186,7 @@ public:
         x = _x; y = _y; frame = _frame;
 
         if (status_code == 0) {
-            fprintf(stderr, "# ROBOT %d get Error\n", id);
+            fprintf(stderr, "#ERROR# ROBOT %d has code 0\n", id);
             if (status == RECOVERY) return;
             status = RECOVERY;
             moves->push_back(want_dir);
@@ -223,22 +225,88 @@ public:
         return res;
     }
 
-    int id, x, y, status, pre_status, frame;
+    void assign(int dir) {
+        if (status == TO_OBJ)
+            moves->push_back(want_dir);
+        want_dir = dir;
+        if (dir != 4)
+            moves->push_back(dir ^ 1);
+        fprintf(stderr, "# ROBOT %d assign: %d\n", id, dir);
+    }
+
+    int id, x, y, frame, pre_status;
     int want_dir, dest_berth;
+    robot_enum status;
     robot_mov want_mov;
     std::shared_ptr<std::vector<int> > moves = std::make_shared<std::vector<int> >();
 } robot[robot_num+1];
 int robot_cnt = 0;
 
+void handle_conflict() {
+    fprintf(stderr, "#3 Handle Conflict\n");
+    static int m[201][201];
+    for (int i = 0; i < 200; ++i) {
+        for (int j = 0; j < 200; ++j) {
+            m[i][j] = 0;
+        }
+    }
+    /* 1. 有货的优先
+     * 2. id小的优先
+     * */
+    static int robot_p[robot_num+1];
+    int robot_pp = 0;
+    for (int i = 0; i < robot_num; ++i) {
+        if (robot[i].status == TO_SHIP) robot_p[robot_pp++] = i;
+    }
+    for (int i = 0; i < robot_num; ++i) {
+        if (robot[i].status != TO_SHIP) robot_p[robot_pp++] = i;
+    }
+
+    // 先占住当前的位置
+    // TODO:把这个m合并到mat里
+    int ri, rdir, rnx, rny;
+    for (int i = 0; i < robot_num; ++i) {
+        ri = robot_p[i];
+        m[robot[ri].x][robot[ri].y] = 1;
+    }
+
+    for (int i = 0; i < robot_num; ++i) {
+        ri = robot_p[i];
+        rdir = robot[ri].want_dir;
+        if (rdir == 5) continue;
+        rnx = robot[ri].x + mov_x[rdir];
+        rny = robot[ri].y + mov_y[rdir];
+        if (!m[rnx][rny]) {
+            m[rnx][rny] = 1;
+            continue;
+        }
+        else {
+
+            int rand_base = rand();
+            for (int k = 0, j; k < 5; ++k) {
+                if (k == 4) {
+                    robot[ri].assign(j);
+                    break;
+                }
+                j = (k + rand_base) % 4;
+                rnx = robot[ri].x + mov_x[j];
+                rny = robot[ri].y + mov_y[j];
+                if (!m[rnx][rny]) {
+                    m[rnx][rny] = 1;
+                    robot[ri].assign(j);
+                    break;
+                }
+            }
+        }
+    }
+}
+
 class Berth {
 public:
     Berth() {}
 
-    bool is_inside(int px, int py) const {
-        return x <= px && px < x + 4 && y <= py && py < y + 4;
-    }
-
     int id, x, y, transport_time, velocity;
+    int occupy;
 }berth[berth_num+1];
 
 class Ship {
@@ -416,23 +484,10 @@ void Input(int &frame_id) {
     scanf("%s", okk);
 
 #ifdef DEBUG_FLAG
-//    fprintf(stderr, "#2 Input finish\n");
+    fprintf(stderr, "#2 Input finish\n");
     fflush(stderr);
 #endif
 }
-
-//int dist_robot_obj_fake(int rx, int ry, int ox, int oy) {
-//    /*
-//     * 重要函数，玄学评估机器人和物品的距离
-//     * 目前采用的思路是：曼哈顿距离*20 + 每个港口的条件下两个点的距离差（表示层次接近）
-//     * */
-//    int sum = 20 * (abs(rx - ox) + abs(ry - oy)); // 曼哈顿距离
-//    for (int i = 0; i < berth_num; ++i) {
-//        sum += abs( mat[rx][ry].dist[i] - mat[ox][oy].dist[i] );
-//    }
-//
-//    return sum;
-//}
 
 
 struct PQnode2 {
@@ -473,7 +528,7 @@ std::shared_ptr<std::vector<int> > get_path(int ux, int uy, int vx, int vy) {
         dis[p.x][p.y] = p.dr;
 
         if (p.x == ux && p.y == uy) {
-//            fprintf(stderr, "Dijk Early Stop!!\n");
+            fprintf(stderr, "Dijk Early Stop!!\n");
             break;
         }
 
@@ -513,104 +568,29 @@ std::shared_ptr<std::vector<int> > get_path(int ux, int uy, int vx, int vy) {
     // 从u一路下降走到v
     std::shared_ptr<std::vector<int> > ret = std::make_shared<std::vector<int> >();
     while (!(ux == vx && uy == vy)) {
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < 5; ++i) {
+            if (i == 4) {
+                fprintf(stderr, "#ERROR# NO WAY (%d, %d)->(%d, %d)\n", ux, uy, vx, vy);
+                return ret;
+            }
             tx = ux + mov_x[i];
             ty = uy + mov_y[i];
-            if (dis[tx][ty] == dis[ux][uy]-1) {
-                ret->push_back(i);
-                ux = tx;
-                uy = ty;
-                break;
+            if (in_mat(tx, ty) && is_land(tx, ty)) {
+                if (dis[tx][ty] == dis[ux][uy]-1) {
+//                fprintf(stderr, "GO dis: %d\n", dis[tx][ty]);
+                    ret->push_back(i);
+                    ux = tx;
+                    uy = ty;
+                    break;
+                }
             }
         }
     }
     std::reverse(ret->begin(), ret->end());
 #ifdef DEBUG_FLAG
     fprintf(stderr, "#2 Generate path, len: %d\n", (int)(ret->size()));
-//    for (int i = 0; i < ret->size(); ++i) {
-//        fprintf(stderr, "_%d", (*ret)[i]);
-//    }
-//    fprintf(stderr, "\n");
-
-
-//    tx = uux, ty = uuy;
-//    fprintf(stderr, "#2 Eval path, from (%d,%d)->", tx, ty);
-//    for (int i = (int)(ret->size()) - 1; i >= 0; --i) {
-//        tx += mov_x[(*ret)[i]];
-//        ty += mov_y[(*ret)[i]];
-//    }
-//    fprintf(stderr, "(%d,%d)\n", tx, ty);
 #endif
     return ret; // 从后往前，可以从u走到v
-}
-
-void Calc() {
-#ifdef DEBUG_FLAG
-//    fprintf(stderr, "#2 Calc start\n");
-#endif
-    static robot_enum flag = NOTHING;
-    static std::shared_ptr<std::vector<int> > path;
-    if (flag == NOTHING) {
-        /* 暂时先只动 #0 号机器人 */
-//        int min_dist = 40 * inf_dist;
-//        int dist_id = -1;
-//        int tmp;
-//
-//        int rx = robot[0].x;
-//        int ry = robot[0].y;
-
-//        for (int i = 0; i < objects.size(); ++i) {
-//            tmp = dist_robot_obj_fake(rx, ry, objects[i].x, objects[i].y);
-//            if (tmp < min_dist) {
-//                min_dist = tmp;
-//                dist_id = i;
-//            }
-//        }
-
-//        path = get_path(robot[0].x, robot[0].y, objects[2].x, objects[2].y);
-        int obj_x = (objects.end()-1)->x;
-        int obj_y = (objects.end()-1)->y;
-        robot[0].calc_path_to_obj(obj_x, obj_y);
-        robot[0].status = TO_OBJ;
-        flag = TO_OBJ;
-    }
-    if (flag == TO_OBJ) {
-//        if (!path->empty()) {
-//            printf("move 0 %d\n", *(path->end()-1));
-//            robot[0].x += mov_x[*(path->end()-1)];
-//            robot[0].y += mov_y[*(path->end()-1)];
-//            fprintf(stderr, "### MOVINT TO OBJ ###\n");
-//            path->pop_back();
-//        }
-//        else {
-//            printf("get 0\n");
-//            fprintf(stderr, "### PICK UP ###\n");
-//            for (int i = 0; i < berth_num; ++i) {
-//                fprintf(stderr, "# TO berth %d: %d\n", i, mat[robot[0].x][robot[0].y].dist[i]);
-//            }
-//            path = get_path(robot[0].x, robot[0].y, berth[1].x + 2, berth[1].y + 2);
-//            flag = TO_SHIP;
-//        }
-        robot[0].calc_want();
-        robot[0].move();
-        if (robot[0].status == TO_SHIP) flag = TO_SHIP;
-    }
-    if (flag == TO_SHIP) {
-//        if (!path->empty()) {
-//            printf("move 0 %d\n", *(path->end()-1));
-//            fprintf(stderr, "### MOVINT TO SHIP ###\n");
-//            path->pop_back();
-//        }
-//        else {
-//            printf("pull 0\n");
-//            fprintf(stderr, "### PUT DOWN ###\n");
-//            flag = RECOVERY;
-//        }
-        robot[0].calc_want();
-        robot[0].move();
-        if (robot[0].status == NOTHING) flag = NOTHING;
-    }
-    fflush(stderr);
 }
 
 
@@ -619,15 +599,28 @@ int main() {
     Init();
     int frame_id;
     for (int frame = 0; frame < 15000; frame++) {
-        if (frame == 0) printf("ship 0 1\n");
-        if (frame == 10000) printf("go 0\n");
+        if (frame == 0) {
+            printf("ship 0 0\n");
+            printf("ship 1 1\n");
+            printf("ship 2 2\n");
+            printf("ship 3 3\n");
+            printf("ship 4 4\n");
+        }
+        if (frame == 12900) {
+            printf("go 0\n");
+            printf("go 1\n");
+            printf("go 2\n");
+            printf("go 3\n");
+            printf("go 4\n");
+        }
         Input(frame_id);
         remove_outdated_obj(frame_id);
-//        Calc();
         for (int i = 0; i < 10; ++i) robot[i].calc_want();
+        handle_conflict();
         for (int i = 0; i < 10; ++i) robot[i].move();
         fprintf(stdout, "OK\n");
         fflush(stdout);
+        fprintf(stderr, "#4 Output Finish\n");
     }
     return 0;
 }
