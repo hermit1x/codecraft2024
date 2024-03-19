@@ -5,11 +5,11 @@
 #include <memory>
 #include <time.h>
 
-#define DEBUG_FLAG
+//#define DEBUG_FLAG
 //#define DEBUG_ROBOT
-#define DEBUG_SHIP
+//#define DEBUG_SHIP
+//#define DEBUG_BERTH
 //#define OUTPUT_DIJKSTRA
-#define G 16
 #define min(x, y) ((x) < (y) ? (x) : (y))
 
 enum mat_enum { LAND, OCEAN, HILL, BERTH };
@@ -80,7 +80,7 @@ void remove_outdated_obj(int frame_id) {
 
 class Berth {
 public:
-    Berth() {}
+    Berth() : value(0.0), tot_value(0), tot_stock(0) {}
 
     bool is_in(int ax, int ay) {
         return x <= ax && ax <= x + 3 && y <= ay && ay <= y + 3;
@@ -89,6 +89,8 @@ public:
     int id, x, y, transport_time, velocity;
     int occupy;
     int stock;
+    double value;
+    int tot_value, tot_stock;
 } berth[berth_num+2];
 
 struct PQnode2 {
@@ -246,9 +248,11 @@ public:
             carry = 1;
         }
         if (act_before_move == ROBOT_PULL) {
-#ifdef DEBUG_FLAG
+#ifdef DEBUG_BERTH
             tot_value += dest_obj.value;
 #endif
+            berth[dest_berth].tot_value += dest_obj.value;
+            berth[dest_berth].tot_stock += 1;
             berth[dest_berth].stock += 1;
             printf("pull %d\n", id);
             carry = 0;
@@ -410,7 +414,7 @@ public:
                     if (p.dr < dis[tx][ty]) {
                         pqueue2.push(PQnode2(
                                 tx, ty,
-                                p.dr + 2 * dis_man(tx, ty, x, y), //  + calc_force(id, tx, ty)
+                                p.dr + 2 * dis_man(tx, ty, x, y),
                                 // 加入曼哈顿距离，A star 思想
                                 p.dr + 1));
                     }
@@ -527,6 +531,7 @@ bool conflict_dfs(int vec_id, int rpp) {
     return false;
 }
 
+bool conflict_error = false;
 void handle_conflict() {
     for (int i = 0; i < 200; ++i) {
         for (int j = 0; j < 200; ++j) {
@@ -588,6 +593,7 @@ void handle_conflict() {
     for (int i = 0; i < conflict_vec_cnt; ++i) {
         if (!conflict_dfs(i, 0)) {
             fprintf(stderr, "# ERROR: NO POSSIBLE SOLUTION\n");
+            conflict_error = true;
         }
     }
 
@@ -600,12 +606,15 @@ public:
 
     void go() {
         if (berth_id == -1) return;
+#ifdef DEBUG_SHIP
         fprintf(stderr, "#SHIP:%d LEAVE\n", id);
+#endif
         printf("go %d\n", id);
         berth[berth_id].occupy = 0;
         count_down = berth[berth_id].transport_time;
         berth_id = -1;
         status = SHIP_SHIPPING;
+        loads = 0;
         return;
     }
 
@@ -620,7 +629,9 @@ public:
         berth[dest].occupy = 1;
         berth_id = dest;
         status = SHIP_SHIPPING;
+#ifdef DEBUG_SHIP
         fprintf(stderr, "#SHIP:%d TRANSPORT\n", id);
+#endif
         printf("ship %d %d\n", id, dest);
         return;
     }
@@ -639,14 +650,19 @@ public:
         if (status == SHIP_SHIPPING) {
             if (count_down == 0) {
                 status = SHIP_NORMAL;
+#ifdef DEBUG_SHIP
+                fprintf(stderr, "#SHIP%d: Arrive berth:%d\n", id, berth_id);
+#endif
             }
         }
 
         if (_status != status || _id != berth_id) {
+#ifdef DEBUG_SHIP
             fprintf(stderr, "#ERROR Ship %d Sync Faild\n", id);
             fprintf(stderr, "#status: rec %d, get %d\n", status, _status);
             fprintf(stderr, "#berth_id: rec %d, get %d\n", berth_id, _id);
             fprintf(stderr, "#count_down: %d\n", count_down);
+#endif
             status = _status;
             berth_id = _id;
         }
@@ -655,6 +671,9 @@ public:
 
     void act() {
         if (status == SHIP_NORMAL) {
+#ifdef DEBUG_SHIP
+            fprintf(stderr, "#SHIP%d: normal count_down: %d\n", id, count_down);
+#endif
             if (berth_id == -1) {
                 for (int i = 0; i < berth_num; ++i) {
                     if (!berth[i].occupy) {
@@ -668,7 +687,9 @@ public:
             // 在泊位上
             if (loads == ship_capacity) {
                 // 装满了，走人
-                fprintf(stderr, "#SHIP FULL\n");
+#ifdef DEBUG_SHIP
+                fprintf(stderr, "#SHIP%d: FULL, count down: %d\n", id, count_down);
+#endif
                 go();
                 return;
             }
@@ -680,9 +701,12 @@ public:
             berth[berth_id].stock -= max_obj_num;
             loads += max_obj_num;
 
-            int next_berth = calc_next_berth();
-            if (next_berth == berth_id) return;
-            move(next_berth);
+            if (count_down <= -30) {
+                int next_berth = calc_next_berth();
+                if (next_berth == berth_id) return;
+//                if (loads > 0.90 * ship_capacity) go();
+                move(next_berth);
+            }
         }
     }
 
@@ -696,13 +720,13 @@ public:
                 next_berth_id = i;
             }
         }
-
-        if (max_stock - berth[berth_id].stock > 100) {
-            return next_berth_id;
-        }
-        else {
-            return berth_id;
-        }
+        return next_berth_id;
+//        if (max_stock - berth[berth_id].stock > ship_capacity) {
+//            return next_berth_id;
+//        }
+//        else {
+//            return berth_id;
+//        }
     }
 
     int id, frame;
@@ -849,8 +873,41 @@ void Init() {
     }
 //    debug_print_dist(0);
 
+    /* 计算港口价值
+     * 价值 = \sum 1/(dis[x][y])
+     * 对于多个地方都能抵达的陆地，对港口i的贡献为
+     * (1/Di) * [(1/Di) / (1/Di + 1/Dj + 1/Dk)]
+     *
+     * */
+    double dominator = 0; // 分母
+    for (int x = 0; x < 200; ++x) {
+        for (int y = 0; y < 200; ++y) {
+            dominator = 0;
+            for (int i = 0; i < berth_num; ++i) {
+                if (mat[x][y].dist[i] != 0 && mat[x][y].dist[i] != inf_dist) {
+                    dominator += 1.0 / (double)mat[x][y].dist[i];
+                }
+            }
+            for (int i = 0; i < berth_num; ++i) {
+                if (mat[x][y].dist[i] != 0 && mat[x][y].dist[i] != inf_dist) {
+                    berth[i].value += 1.0 / ((double)mat[x][y].dist[i] * (double)mat[x][y].dist[i]) / dominator;
+                }
+            }
+        }
+    }
+    /* 港口可调度的机器人数量
+     * 直接乘进港口价值
+     * */
+    int sum_robot;
+    for (int i = 0; i < berth_num; ++i) {
+        sum_robot = 0;
+        for (int j = 0; j < robot_num; ++j) {
+            if (mat[ robot[j].x ][ robot[j].y ].dist[i] != inf_dist) sum_robot++;
+        }
+        berth[i].value *= sum_robot;
+    }
 
-    fprintf(stdout, "OK\n");
+    printf("OK\n");
     fflush(stdout);
 #ifdef DEBUG_FLAG
     fprintf(stderr, "#1 Init Finish\n");
@@ -897,16 +954,25 @@ int main() {
 #endif
     Init();
     int frame_id;
-    for (int frame = 0; frame < 15000; frame++) {
+    for (int frame = 1; frame <= 15000; frame++) {
 
         Input(frame_id);
 #ifdef DEBUG_FLAG
         fprintf(stderr, "#2 Input Finish\n");
+        if (frame_id != frame) {
+            fprintf(stderr, "# LOOP SYNC ERROR: loop:%d, frame get:%d\n", frame, frame_id);
+        }
 #endif
+        if (frame_id != frame) {
+            frame = frame_id;
+        }
         remove_outdated_obj(frame_id);
 
         for (int i = 0; i < robot_num; ++i) robot[i].think();
         handle_conflict();
+        if (conflict_error) {
+            fprintf(stderr, "-> frame: %d, frame_id: %d\n", frame, frame_id);
+        }
         for (int i = 0; i < robot_num; ++i) robot[i].act();
         for (int i = 0; i < ship_num; ++i) ship[i].act();
         if (frame == 13000) {
@@ -920,11 +986,13 @@ int main() {
         fprintf(stderr, "#4 Output Finish\n");
 #endif
     }
-#ifdef DEBUG_FLAG
+#ifdef DEBUG_BERTH
     fprintf(stderr, "#TOTAL VALUE %d\n", tot_value);
     for (int i = 0; i < berth_num; ++i) {
-        fprintf(stderr, "#BERTH%d: REMAIN STOCK %d\n", i, berth[i].stock);
+        fprintf(stderr, "#BERTH%d: guess value:%lf, tot value:%d, tot stock %d, remain stock %d\n", i, berth[i].value, berth[i].tot_value, berth[i].tot_stock, berth[i].stock);
     }
+    fprintf(stderr, "\n\n");
+    fflush(stderr);
 #endif
     return 0;
 }
