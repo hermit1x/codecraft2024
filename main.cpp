@@ -98,319 +98,6 @@ struct PQnode2 {
 };
 std::priority_queue<PQnode2> pqueue2;
 
-//int calc_force(int id, int tx, int ty);
-//class _Robot {
-//public:
-//    Robot() {}
-//    Robot(int _x, int _y, int _id) : x(_x), y(_y), id(_id), status(NOTHING), frame(1) {}
-//
-//    void calc_want() {
-//        if (status == NOTHING) {
-//            fprintf(stderr, "# Robot %d resting, assign obj\n", id);
-//            int obj_id = calc_best_obj();
-//
-//            if (obj_id == -1) {
-////                fprintf(stderr, "# Robot %d assign failed, NO Object\n", id);
-//                want_mov = ROBOT_TICK;
-//                want_dir = 5;
-//                return;
-//            }
-//
-//            obj = objects[obj_id];
-//            tot_value += obj.value;
-//            fprintf(stderr, "OBJ VALUE: %d\n", obj.value);
-//            objects.erase(objects.begin() + obj_id);
-//
-//            calc_path_to_obj(obj.x, obj.y);
-////            fprintf(stderr, "# Robot %d assign finish\n", id);
-//            status = TO_OBJ;
-//        }
-//        if (status == RECOVERY) {
-//            want_mov = ROBOT_RECOVER;
-//            want_dir = 5;
-//            return;
-//        }
-//        if (status == TO_OBJ) {
-//            if (dis[x][y] == 0 && mat[x][y].has_obj) {
-//                want_mov = ROBOT_GET;
-//                want_dir = 5;
-//                calc_best_berth();
-//                return;
-//            }
-//            else if (dis[x][y] == 0) {
-//                fprintf(stderr, "# Robot %d ERROR, No obj found at (%d,%d)!\n", id, x, y);
-//                status = NOTHING;
-//                want_mov = ROBOT_TICK;
-//                want_dir = 5;
-//                return;
-//            }
-//            if (dis[x][y] == inf_dist) {
-//                calc_path_to_obj(obj.x, obj.y);
-//                return;
-//            }
-//            // 用人工势场法避障
-////            if (calc_force(id, x, y) > 3) {
-////                calc_path_to_obj(obj.x, obj.y);
-////                return;
-////            }
-//            int dir = 5, min_dis = inf_dist;
-//            int cur_dist = dis[x][y], tx, ty, tf;
-//            int rand_base = rand();
-//            for (int i, j = 0; j < 4; ++j) {
-//                i = (rand_base + j) % 4;
-//                tx = x + mov_x[i];
-//                ty = y + mov_y[i];
-//                if (in_mat(tx, ty) && is_land(tx, ty)) {
-////                    tf = calc_force(id, tx, ty);
-//                    tf = 0;
-//                    if (min_dis > (dis[tx][ty] - cur_dist) + tf) {
-//                        min_dis = (dis[tx][ty] - cur_dist) + tf;
-//                        dir = i;
-//                    }
-//                }
-//            }
-//            want_mov = ROBOT_MOV;
-//            want_dir = dir;
-//            return;
-//        }
-//        if (status == TO_SHIP) {
-//            int cur_dist = mat[x][y].dist[dest_berth];
-//            if (cur_dist == 0) {
-//                // 进入泊位
-////                fprintf(stderr, "# Robot %d Enter Berth %d\n", id, dest_berth);
-//                want_mov = ROBOT_PULL;
-//                want_dir = 5;
-//                return;
-//            }
-//            int dir = 5, min_dis = inf_dist;
-//            // 用人工势场法避障
-//            int cur_f = calc_force(id, x, y), tx, ty, tf;
-//            cur_f = 0;
-//            int rand_base = rand();
-//            for (int i, j = 0; j < 4; ++j) {
-//                i = (rand_base + j) % 4;
-//                tx = x + mov_x[i];
-//                ty = y + mov_y[i];
-//                if (in_mat(tx, ty) && is_land(tx, ty)) {
-//                    tf = calc_force(id, tx, ty);
-//                    if (min_dis > (mat[tx][ty].dist[dest_berth] - cur_dist) + (tf - cur_f)) {
-//                        min_dis = (mat[tx][ty].dist[dest_berth] - cur_dist) + (tf - cur_f);
-//                        dir = i;
-//                    }
-//                }
-//            }
-//            if (dir == 5) {
-//                fprintf(stderr, "# Robot %d ERROR, No way to ship!\n", id);
-//            }
-//            want_mov = ROBOT_MOV;
-//            want_dir = dir;
-//        }
-//    }
-//
-//    void move() {
-//        frame++;
-//        switch (want_mov) {
-//            case ROBOT_MOV:
-//                printf("move %d %d\n", id, want_dir);
-//                x += mov_x[want_dir];
-//                y += mov_y[want_dir];
-////                fprintf(stderr, "# ROBOT %d move: %d\n", id, want_dir);
-//                break;
-//            case ROBOT_GET:
-//                printf("get %d\n", id);
-////                fprintf(stderr, "# ROBOT %d get\n", id);
-//                mat[x][y].has_obj = false;
-//                calc_best_berth();
-//                status = TO_SHIP;
-//                break;
-//            case ROBOT_PULL:
-//                printf("pull %d\n", id);
-////                fprintf(stderr, "# ROBOT %d pull\n", id);
-//                berth[dest_berth].stock += 1;
-//                status = NOTHING;
-//                break;
-//            case ROBOT_RECOVER:
-////                fprintf(stderr, "# ROBOT %d recovering\n", id);
-//                break;
-//            case ROBOT_TICK:
-////                fprintf(stderr, "# ROBOT %d waiting...\n", id);
-//                break;
-//        }
-//    }
-//
-//    void calc_path_to_obj(int vx, int vy) {
-////        moves = get_path(x, y, obj_x, obj_y);
-//        /* A* 寻路，评估权重是 已经走的距离+曼哈顿距离
-//         * 同时存下来搜的时候的距离矩阵，供人工势场
-//         * */
-//        for (int i = 0; i < 200; ++i) {
-//            for (int j = 0; j < 200; ++j) {
-//                dis[i][j] = inf_dist;
-//                vis[i][j] = 0;
-//            }
-//        }
-//
-//        pqueue2.push(PQnode2(vx, vy, 0, 0));
-//        int tx, ty;
-//        while (!pqueue2.empty()) {
-//            PQnode2 p = pqueue2.top();
-//            pqueue2.pop();
-////        fprintf(stderr, "PQ2 loop: (%d, %d): %d\n", p.x, p.y, p.dr);
-//            if (vis[p.x][p.y]) continue;
-//            vis[p.x][p.y] = 1;
-//            dis[p.x][p.y] = p.dr;
-//
-//            if (p.x == x && p.y == y) {
-////            fprintf(stderr, "Dijk Early Stop!!\n");
-//                break;
-//            }
-//
-//            int rand_base = rand() % 4;
-//            for (int i, j = 0; j < 4; ++j) {
-//                i = (rand_base + j) % 4;
-//                tx = p.x + mov_x[i];
-//                ty = p.y + mov_y[i];
-//
-//                if (in_mat(tx, ty) && is_land(tx, ty)) {
-//                    if (p.dr < dis[tx][ty]) {
-//                        pqueue2.push(PQnode2(
-//                                tx, ty,
-//                                p.dr + 2 * dis_man(tx, ty, x, y), //  + calc_force(id, tx, ty)
-//                                // 加入曼哈顿距离，A star 思想
-//                                p.dr + 1));
-//                    }
-//                }
-//            }
-//        }
-//
-//        while (!pqueue2.empty()) {
-//            // 拓宽道路，至少有横向宽度为3的路可以走
-//            PQnode2 p = pqueue2.top();
-//            pqueue2.pop();
-//            if (vis[p.x][p.y]) continue;
-//            vis[p.x][p.y] = 1;
-//            dis[p.x][p.y] = p.dr;
-//        }
-//
-//#ifdef DEBUG_FLAG
-////    fprintf(stderr, "#3 get_path() final dist: %d\n", dis[x][y]);
-////    for (int i = 0; i < 200; ++i) {
-////        for (int j = 0; j < 200; ++j) {
-////            int x = dis[i][j];
-////            if (x == inf_dist) x = -1;
-////            fprintf(stderr, "%4d", x);
-////        }
-////        fprintf(stderr, "\n");
-////    }
-////    fflush(stderr);
-//#endif
-//
-//    }
-//
-//    void calc_best_berth() {
-////        int min_dis = inf_dist, min_berth = -1;
-////        for (int i = 0; i < berth_num; ++i) {
-////            if (min_dis > mat[x][y].dist[i]) {
-////                min_dis = mat[x][y].dist[i];
-////                min_berth = i;
-////            }
-////        }
-////        dest_berth = min_berth;
-//        dest_berth = 0;
-//    }
-//
-//    void update(int _carry, int _x, int _y, int status_code, int _frame) {
-//        if (_x != x || _y != y || _frame != frame) {
-//            fprintf(stderr, "# ROBOT %d Sync Error\n", id);
-//            fprintf(stderr, "# rec: (%d, %d) %d\n", x, y, frame);
-//            fprintf(stderr, "# get: (%d, %d) %d\n", _x, _y, _frame);
-//            x = _x; y = _y; frame = _frame;
-//        }
-//
-//        if (status_code == 0) {
-//            fprintf(stderr, "#ERROR# ROBOT %d has code 0\n", id);
-//            if (status == RECOVERY) return;
-//            status = RECOVERY;
-//        }
-//        if (pre_status == 0 && status_code == 1) {
-//            // 恢复信息
-//            if (_carry) {
-//                // TODO:还差一帧从OBJ位置捡东西的
-//                status = TO_SHIP;
-//            }
-//            else {
-//                status = NOTHING;
-//            }
-//        }
-//        pre_status = status_code;
-//    }
-//
-//    int calc_best_obj() {
-//        int max_val = 0, res = -1;
-//        int obj_x, obj_y, obj_dis, obj_v;
-//        for (int i = 0; i < objects.size(); ++i) {
-//            obj_x = objects[i].x;
-//            obj_y = objects[i].y;
-//            obj_v = objects[i].value;
-//            obj_dis = mat[obj_x][obj_y].dist[dest_berth];
-//            if (objects[i].time_appear + 1000 < frame + obj_dis) continue;
-//            if (max_val < obj_v) {
-//                max_val = obj_v;
-//                res = i;
-//            }
-//        }
-//        return res;
-//        /*
-//        // 简单以最近的来选
-//        int min_dis = inf_dist, res = -1;
-//        int obj_x, obj_y, obj_dis;
-//        for (int i = 0; i < objects.size(); ++i) {
-//            obj_x = objects[i].x;
-//            obj_y = objects[i].y;
-//            obj_dis = mat[obj_x][obj_y].dist[dest_berth];
-//            if (objects[i].time_appear + 1000 < frame + obj_dis) continue;
-//            if (min_dis > obj_dis) {
-//                min_dis = obj_dis;
-//                res = i;
-//            }
-//        }
-//        return res;
-//         */
-//    }
-//
-//    void assign(int dir) {
-//        want_dir = dir;
-////        if (status == TO_OBJ)
-////            moves->push_back(want_dir);
-////        want_dir = dir;
-////        if (dir != 4)
-////            moves->push_back(dir ^ 1);
-////        fprintf(stderr, "# ROBOT %d assign: %d\n", id, dir);
-//    }
-//
-//
-//
-//    int id, x, y, frame, pre_status;
-//    int want_dir, dest_berth;
-//    int dis[201][201], vis[201][201];
-//    Obj obj;
-//    robot_status status;
-//    robot_mov want_mov;
-//};
-//
-//
-//int calc_force(int id, int tx, int ty) {
-//    int f = 0, d;
-//    for (int i = 0; i < id; ++i) {
-////        if (i == id) continue;
-//        d = dis_man(tx, ty, robot[i].x, robot[i].y);
-//        f += G / (d*d);
-//        d = dis_man(tx, ty, robot[i].x + mov_x[robot[i].want_dir], robot[i].y + mov_y[mov_x[robot[i].want_dir]]);
-//        f += G / (d*d);
-//    }
-//    return f;
-//}
-
 int robot_cnt = 0;
 
 struct Pos {
@@ -438,7 +125,33 @@ public:
     }
 
     void init() {
+        for (int i = 0; i < 200; ++i) {
+            for (int j = 0; j < 200; ++j) {
+                reachable[i][j] = 0;
+            }
+        }
 
+        pqueue2.push(PQnode2(x, y, 0, 0));
+        reachable[x][y] = 1;
+        int tx, ty;
+        while (!pqueue2.empty()) {
+            PQnode2 p = pqueue2.top();
+            pqueue2.pop();
+
+            for (int i = 0; i < 4; ++i) {
+                tx = p.x + mov_x[i];
+                ty = p.y + mov_y[i];
+
+                if (is_legal(tx, ty)) {
+                    if (!reachable[tx][ty]) {
+                        reachable[tx][ty] = 1;
+                        pqueue2.push(PQnode2(tx, ty, 0, 0));
+                    }
+                }
+            }
+        }
+
+        calc_best_berth();
     }
 
     void sync(int _carry, int _x, int _y, int status_code, int _frame) {
@@ -448,7 +161,6 @@ public:
             fprintf(stderr, "# get: (%d, %d) %d, carry:%d\n", _x, _y, _frame, _carry);
             x = _x; y = _y; frame = _frame; carry = _carry;
         }
-        frame++;
         if (status_code == 0) {
             fprintf(stderr, "#ERROR# ROBOT %d has code 0\n", id);
 //            if (status == RECOVERY) return;
@@ -460,6 +172,12 @@ public:
         if (status == TO_SHIP && berth[dest_berth].is_in(x, y)) {
             status = AT_SHIP;
         }
+
+        if (status == TO_OBJ && dest_obj.time_appear + 1000 <= frame) {
+            status = NOTHING;
+        }
+
+        frame++;
     }
 
     void think() {
@@ -540,6 +258,9 @@ public:
 
         dest_obj = objects[obj_id];
         objects.erase(objects.begin() + obj_id);
+#ifdef DEBUG_FLAG
+        tot_value += dest_obj.value;
+#endif
         return true;
     }
 
@@ -615,6 +336,7 @@ public:
             obj_x = objects[i].x;
             obj_y = objects[i].y;
             obj_dis = mat[obj_x][obj_y].dist[dest_berth];
+            if (!reachable[obj_x][obj_y]) continue;
             if (objects[i].time_appear + 1000 + 500 < frame + obj_dis) continue;
             if (min_dis > obj_dis) {
                 min_dis = obj_dis;
@@ -703,21 +425,25 @@ public:
     }
 
     void calc_best_berth() {
-//        int min_dis = inf_dist, min_berth = -1;
-//        for (int i = 0; i < berth_num; ++i) {
-//            if (min_dis > mat[x][y].dist[i]) {
-//                min_dis = mat[x][y].dist[i];
-//                min_berth = i;
-//            }
-//        }
-//        dest_berth = min_berth;
-        dest_berth = 0;
+        int min_dis = inf_dist, min_berth = -1;
+        for (int i = 0; i < berth_num; ++i) {
+            if (min_dis > mat[x][y].dist[i]) {
+                min_dis = mat[x][y].dist[i];
+                min_berth = i;
+            }
+        }
+        dest_berth = min_berth;
+        if (min_berth == -1) {
+            fprintf(stderr, "# ROBOT:%d NO Reachable Berth\n", id);
+            min_berth = 0;
+        }
+//        dest_berth = 0;
     }
 
 
     int id, x, y, frame, carry;
     robot_status status;
-    int dis[201][201], vis[201][201];
+    int dis[201][201], vis[201][201], reachable[201][201];
     int dest_berth = 0;
     Obj dest_obj;
     robot_mov act_before_move;
@@ -842,75 +568,6 @@ void handle_conflict() {
     }
 
 }
-
-//void handle_conflict() {
-////    fprintf(stderr, "#3 Handle Conflict\n");
-//    static int m[201][201];
-//    for (int i = 0; i < 200; ++i) {
-//        for (int j = 0; j < 200; ++j) {
-//            m[i][j] = 0;
-//        }
-//    }
-//    // 算势场
-//
-//    /* 1. 有货的优先
-//     * 2. id小的优先
-//     * */
-//    static int robot_p[robot_num+1];
-//    int robot_pp = 0;
-//    for (int i = 0; i < robot_num; ++i) {
-//        if (robot[i].status == TO_SHIP) robot_p[robot_pp++] = i;
-//    }
-//    for (int i = 0; i < robot_num; ++i) {
-//        if (robot[i].status != TO_SHIP) robot_p[robot_pp++] = i;
-//    }
-//
-//    // 先占住当前的位置
-//    // TODO:把这个m合并到mat里
-//    int ri, rdir, rnx, rny;
-//    for (int i = 0; i < robot_num; ++i) {
-//        ri = robot_p[i];
-//        m[robot[ri].x][robot[ri].y] = 1;
-//    }
-//
-//    for (int i = 0; i < robot_num; ++i) {
-//        ri = robot_p[i];
-//        rdir = robot[ri].want_dir;
-//        if (rdir == 5) continue;
-//        rnx = robot[ri].x + mov_x[rdir];
-//        rny = robot[ri].y + mov_y[rdir];
-//        if (!m[rnx][rny]) {
-//            m[rnx][rny] = 1;
-//            continue;
-//        }
-//        else {
-//            int rand_base = rand();
-////            int rand_base;
-////            if (rdir == 0 || rdir == 1) rand_base = 2; // 先向自己左手边走
-////            if (rdir == 2) rand_base = 3;
-////            if (rdir == 2) rand_base = 1;
-//            if (rand() % 5 == 0) {
-//                robot[ri].assign(4);
-//                return;
-//            }
-//            for (int k = 0, j; k < 5; ++k) {
-//                if (k == 4) {
-//                    robot[ri].assign(4);
-//                    break;
-//                }
-//                j = (k + rand_base) % 4;
-//                rnx = robot[ri].x + mov_x[j];
-//                rny = robot[ri].y + mov_y[j];
-//                if (!m[rnx][rny]) {
-//                    m[rnx][rny] = 1;
-//                    robot[ri].assign(j);
-//                    break;
-//                }
-//            }
-//        }
-//    }
-//}
-
 
 int ship_capacity;
 class Ship {
@@ -1106,6 +763,7 @@ void Init() {
     fprintf(stderr, "capacity %d\n", ship_capacity);
     fprintf(stderr, "OK from Judge: %s\n", okk);
 #endif
+
     /*
      * 给每一个泊位都初始化一下全图的最短路
      * 存在mat[x][y].dist[berth_id]里
@@ -1114,6 +772,12 @@ void Init() {
      * */
     for (int i = 0; i < berth_num; ++i) {
         dijkstra(i);
+    }
+
+
+    // 每个机器人初始化可到达的范围、可到达的港口
+    for (int i = 0; i < robot_num; ++i) {
+        robot[i].init();
     }
 //    debug_print_dist(0);
 
