@@ -121,12 +121,6 @@ public:
             want_dir = 5;
             return;
         }
-//        if (!moves->empty()) {
-//            want_mov = ROBOT_MOV;
-//            want_dir = *(moves->end() - 1);
-//            moves->pop_back();
-//            return;
-//        }
         if (status == TO_OBJ) {
             if (dis[x][y] == 0 && mat[x][y].has_obj) {
                 want_mov = ROBOT_GET;
@@ -325,15 +319,10 @@ public:
             fprintf(stderr, "#ERROR# ROBOT %d has code 0\n", id);
             if (status == RECOVERY) return;
             status = RECOVERY;
-            moves->push_back(want_dir);
         }
         if (pre_status == 0 && status_code == 1) {
             // 恢复信息
-            if (!moves->empty()) {
-                // 有指定任务
-                status = TO_OBJ;
-            }
-            else if (_carry) {
+            if (_carry) {
                 // TODO:还差一帧从OBJ位置捡东西的
                 status = TO_SHIP;
             }
@@ -378,11 +367,12 @@ public:
     }
 
     void assign(int dir) {
-        if (status == TO_OBJ)
-            moves->push_back(want_dir);
         want_dir = dir;
-        if (dir != 4)
-            moves->push_back(dir ^ 1);
+//        if (status == TO_OBJ)
+//            moves->push_back(want_dir);
+//        want_dir = dir;
+//        if (dir != 4)
+//            moves->push_back(dir ^ 1);
 //        fprintf(stderr, "# ROBOT %d assign: %d\n", id, dir);
     }
 
@@ -394,7 +384,6 @@ public:
     Obj obj;
     robot_enum status;
     robot_mov want_mov;
-    std::shared_ptr<std::vector<int> > moves = std::make_shared<std::vector<int> >();
 } robot[robot_num+1];
 int robot_cnt = 0;
 
@@ -456,9 +445,13 @@ void handle_conflict() {
 //            if (rdir == 0 || rdir == 1) rand_base = 2; // 先向自己左手边走
 //            if (rdir == 2) rand_base = 3;
 //            if (rdir == 2) rand_base = 1;
+            if (rand() % 5 == 0) {
+                robot[ri].assign(4);
+                return;
+            }
             for (int k = 0, j; k < 5; ++k) {
                 if (k == 4) {
-                    robot[ri].assign(j);
+                    robot[ri].assign(4);
                     break;
                 }
                 j = (k + rand_base) % 4;
@@ -719,94 +712,6 @@ void Input(int &frame_id) {
     scanf("%s", okk);
 }
 
-
-
-
-//std::shared_ptr<std::vector<int> > get_path(int ux, int uy, int vx, int vy) {
-////    fprintf(stderr, "#3 get_path() start (%d,%d)->(%d,%d)\n", ux, uy, vx, vy);
-//    /* A* 寻路，评估权重是 已经走的距离+2*曼哈顿距离
-//     * 返回的是一个倒装的数据，从v[-1]一个个到v[0]，表示是mov中的行动，从u走到v
-//     * */
-//
-//
-//    // 这里的最短路是从v（目的地）开始到u的最短路
-//    // 回头从u开始通过爬梯子走到v，然后一个一个push，最后最后再reverse一下
-////    dis[vx][vy] = 0;
-//    pqueue2.push(PQnode2(vx, vy, 0, 0));
-//    int tx, ty;
-//    while (!pqueue2.empty()) {
-//        PQnode2 p = pqueue2.top();
-//        pqueue2.pop();
-////        fprintf(stderr, "PQ2 loop: (%d, %d): %d\n", p.x, p.y, p.dr);
-//        if (vis[p.x][p.y]) continue;
-//        vis[p.x][p.y] = 1;
-//        dis[p.x][p.y] = p.dr;
-//
-//        if (p.x == x && p.y == y) {
-////            fprintf(stderr, "Dijk Early Stop!!\n");
-//            break;
-//        }
-//
-//        int rand_base = rand() % 4;
-//        for (int i, j = 0; j < 4; ++j) {
-//            i = (rand_base + j) % 4;
-//            tx = p.x + mov_x[i];
-//            ty = p.y + mov_y[i];
-//
-//            if (in_mat(tx, ty) && is_land(tx, ty)) {
-//                if (p.dr + 1 < dis[tx][ty]) {
-//                    pqueue2.push(PQnode2(
-//                            tx, ty,
-//                            p.dr + 2 * dis_man(tx, ty, x, y), // 加入曼哈顿距离，A star 思想
-//                            p.dr + 1));
-//                }
-//            }
-//        }
-//    }
-//
-//    while (!pqueue2.empty()) pqueue2.pop();
-////    pqueue2 = std::priority_queue<PQnode2>();
-//
-//#ifdef DEBUG_FLAG
-////    fprintf(stderr, "#3 get_path() final dist: %d\n", dis[ux][uy]);
-////    for (int i = 0; i < 200; ++i) {
-////        for (int j = 0; j < 200; ++j) {
-////            int x = dis[i][j];
-////            if (x == inf_dist) x = -1;
-////            fprintf(stderr, "%4d", x);
-////        }
-////        fprintf(stderr, "\n");
-////    }
-//    fflush(stderr);
-//#endif
-//
-//    // 从u一路下降走到v
-//    std::shared_ptr<std::vector<int> > ret = std::make_shared<std::vector<int> >();
-//    while (!(ux == vx && uy == vy)) {
-//        for (int i = 0; i < 5; ++i) {
-//            if (i == 4) {
-//                fprintf(stderr, "#ERROR# NO WAY (%d, %d)->(%d, %d)\n", ux, uy, vx, vy);
-//                return ret;
-//            }
-//            tx = ux + mov_x[i];
-//            ty = uy + mov_y[i];
-//            if (in_mat(tx, ty) && is_land(tx, ty)) {
-//                if (dis[tx][ty] == dis[ux][uy]-1) {
-////                fprintf(stderr, "GO dis: %d\n", dis[tx][ty]);
-//                    ret->push_back(i);
-//                    ux = tx;
-//                    uy = ty;
-//                    break;
-//                }
-//            }
-//        }
-//    }
-//    std::reverse(ret->begin(), ret->end());
-//#ifdef DEBUG_FLAG
-////    fprintf(stderr, "#2 Generate path, len: %d\n", (int)(ret->size()));
-//#endif
-//    return ret; // 从后往前，可以从u走到v
-//}
 
 
 int main() {
