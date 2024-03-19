@@ -6,6 +6,8 @@
 #include <time.h>
 
 #define DEBUG_FLAG
+//#define DEBUG_ROBOT
+#define DEBUG_SHIP
 //#define OUTPUT_DIJKSTRA
 #define G 16
 #define min(x, y) ((x) < (y) ? (x) : (y))
@@ -71,7 +73,9 @@ void remove_outdated_obj(int frame_id) {
         else break;
     }
     objects.erase(objects.begin(), it);
+#ifdef DEBUG_FLAG
     fprintf(stderr, "# Frame %d objects.size() = %lu\n", frame_id, objects.size());
+#endif
 }
 
 class Berth {
@@ -85,7 +89,7 @@ public:
     int id, x, y, transport_time, velocity;
     int occupy;
     int stock;
-}berth[berth_num+1];
+} berth[berth_num+2];
 
 struct PQnode2 {
     PQnode2() {};
@@ -156,16 +160,20 @@ public:
 
     void sync(int _carry, int _x, int _y, int status_code, int _frame) {
         if (_x != x || _y != y || _frame != frame || _carry != carry) {
+#ifdef DEBUG_ROBOT
             fprintf(stderr, "# ROBOT %d Sync Error\n", id);
             fprintf(stderr, "# rec: (%d, %d) %d, carry:%d\n", x, y, frame, carry);
             fprintf(stderr, "# get: (%d, %d) %d, carry:%d\n", _x, _y, _frame, _carry);
+#endif
             x = _x; y = _y; frame = _frame; carry = _carry;
         }
+#ifdef DEBUG_ROBOT
         if (status_code == 0) {
             fprintf(stderr, "#ERROR# ROBOT %d has code 0\n", id);
 //            if (status == RECOVERY) return;
 //            status = RECOVERY;
         }
+#endif
         if (status == TO_OBJ && dest_obj.x == x && dest_obj.y == y) {
             status = AT_OBJ;
         }
@@ -211,19 +219,25 @@ public:
         if (status == NOTHING) {
             if (choose_obj()) {
                 status = TO_OBJ;
+#ifdef DEBUG_ROBOT
                 fprintf(stderr, "# ROBOT:%d get object\n", id);
+#endif
                 clear_dis();
                 calc_moves();
             }
             else {
+#ifdef DEBUG_ROBOT
                 fprintf(stderr, "# ROBOT:%d no object\n", id);
+#endif
                 calc_moves();
             }
             return;
         }
+#ifdef DEBUG_ROBOT
         if (status == RECOVERY) {
             fprintf(stderr, "# ROBOT:%d is in RECOVERY\n", id);
         }
+#endif
     }
 
     void act() {
@@ -232,6 +246,10 @@ public:
             carry = 1;
         }
         if (act_before_move == ROBOT_PULL) {
+#ifdef DEBUG_FLAG
+            tot_value += dest_obj.value;
+#endif
+            berth[dest_berth].stock += 1;
             printf("pull %d\n", id);
             carry = 0;
         }
@@ -240,16 +258,20 @@ public:
 //            fprintf(stderr, "robot %d: (%d,%d)->(%d,%d)\n", id, x, y, next_moves[assign_move_id].x, next_moves[assign_move_id].y);
             x = next_moves[assign_move_id].x;
             y = next_moves[assign_move_id].y;
+#ifdef DEBUG_ROBOT
             if (!is_legal(x, y)) {
                 fprintf(stderr, "robot %d: (%d,%d)->(%d,%d)\n", id, x, y, next_moves[assign_move_id].x, next_moves[assign_move_id].y);
             }
+#endif
         }
+#ifdef DEBUG_ROBOT
         else {
             fprintf(stderr, "robot %d: no move, amid:%d, status: %d, carry: %d, obj:(%d,%d)\n", id, assign_move_id, status, carry, dest_obj.x, dest_obj.y);
             for (int i = 0; i < next_moves.size(); ++i) {
                 fprintf(stderr, "# ROBOT:%d MOVEINFO mid:%d, dir:%d, (%d,%d)->(%d,%d), dis:%d\n", id, i, next_moves[i].dir, x, y, next_moves[i].x, next_moves[i].y, next_moves[i].v);
             }
         }
+#endif
     }
 
     bool choose_obj() {
@@ -258,9 +280,6 @@ public:
 
         dest_obj = objects[obj_id];
         objects.erase(objects.begin() + obj_id);
-#ifdef DEBUG_FLAG
-        tot_value += dest_obj.value;
-#endif
         return true;
     }
 
@@ -304,10 +323,12 @@ public:
         if (is_safe) {
             assign_move_id = 0;
         }
+#ifdef DEBUG_ROBOT
         if (next_moves.size() == 1) fprintf(stderr, "# ERROR, ROBOT:%d NO WAY\n", id);
 //        for (int i = 0; i < next_moves.size(); ++i) {
 //            fprintf(stderr, "# ROBOT:%d dir:%d dis:%d\n", id, next_moves[i].dir, next_moves[i].v);
 //        }
+#endif
     }
 
     int calc_best_obj() {
@@ -356,7 +377,9 @@ public:
     }
 
     void calc_path_to_obj() {
+#ifdef DEBUG_ROBOT
         fprintf(stderr, "# ROBOT:%d call calc_path_to_obj()\n", id);
+#endif
         // 以 vx,vy 为源的最短路，从 x,y 出发
         /* A* 寻路，评估权重是 已经走的距离+曼哈顿距离
          * 同时存下来搜的时候的距离矩阵
@@ -434,17 +457,18 @@ public:
         }
         dest_berth = min_berth;
         if (min_berth == -1) {
+#ifdef DEBUG_ROBOT
             fprintf(stderr, "# ROBOT:%d NO Reachable Berth\n", id);
-            min_berth = 0;
+#endif
+            dest_berth = 0;
         }
-//        dest_berth = 0;
     }
 
 
     int id, x, y, frame, carry;
     robot_status status;
     int dis[201][201], vis[201][201], reachable[201][201];
-    int dest_berth = 0;
+    int dest_berth;
     Obj dest_obj;
     robot_mov act_before_move;
     std::vector<Pos> next_moves;
@@ -572,20 +596,38 @@ void handle_conflict() {
 int ship_capacity;
 class Ship {
 public:
-    Ship() {};
+    Ship() : status(SHIP_NORMAL), berth_id(-1) {};
 
     void go() {
         if (berth_id == -1) return;
-        fprintf(stderr, "#SHIP LEAVE\n");
+        fprintf(stderr, "#SHIP:%d LEAVE\n", id);
         printf("go %d\n", id);
         berth[berth_id].occupy = 0;
+        count_down = berth[berth_id].transport_time;
         berth_id = -1;
         status = SHIP_SHIPPING;
         return;
     }
 
+    void move(int dest) {
+        if (berth_id == -1) {
+            count_down = berth[dest].transport_time;
+        }
+        else {
+            berth[berth_id].occupy = 0;
+            count_down = 500;
+        }
+        berth[dest].occupy = 1;
+        berth_id = dest;
+        status = SHIP_SHIPPING;
+        fprintf(stderr, "#SHIP:%d TRANSPORT\n", id);
+        printf("ship %d %d\n", id, dest);
+        return;
+    }
+
     void update(int state_code, int _id, int _frame) {
         frame++;
+        count_down--;
         if (state_code == 0)
             _status = SHIP_SHIPPING;
         else if (state_code == 1)
@@ -594,38 +636,40 @@ public:
             _status = SHIP_WAITING;
         }
 
+        if (status == SHIP_SHIPPING) {
+            if (count_down == 0) {
+                status = SHIP_NORMAL;
+            }
+        }
+
         if (_status != status || _id != berth_id) {
-//            fprintf(stderr, "#ERROR Ship %d Sync Faild\n", id);
+            fprintf(stderr, "#ERROR Ship %d Sync Faild\n", id);
+            fprintf(stderr, "#status: rec %d, get %d\n", status, _status);
+            fprintf(stderr, "#berth_id: rec %d, get %d\n", berth_id, _id);
+            fprintf(stderr, "#count_down: %d\n", count_down);
             status = _status;
             berth_id = _id;
         }
+
+    }
+
+    void act() {
         if (status == SHIP_NORMAL) {
             if (berth_id == -1) {
-//                for (int i = 0; i < berth_num; ++i) {
-//                    if (berth[i].occupy == 0) {
-//                        berth[i].occupy = 1;
-//                        fprintf(stderr, "#SHIP %d CAME %d\n", id, i);
-//                        berth_id = i;
-//                        state_code = SHIP_SHIPPING;
-//                        return;
-//                    }
-//                }
-                if (!berth[0].occupy) {
-                    fprintf(stderr, "#SHIP %d CAME %d\n", id, 0);
-                    printf("ship %d %d\n", id, 0);
-                    berth_id = 0;
-                    state_code = SHIP_SHIPPING;
-                    return;
+                for (int i = 0; i < berth_num; ++i) {
+                    if (!berth[i].occupy) {
+                        move(i);
+                        return;
+                    }
                 }
+                berth_id = -1;
+                return;
             }
             // 在泊位上
             if (loads == ship_capacity) {
                 // 装满了，走人
                 fprintf(stderr, "#SHIP FULL\n");
-                printf("go %d\n", id);
-                berth[berth_id].occupy = 0;
-                berth_id = -1;
-                status = SHIP_SHIPPING;
+                go();
                 return;
             }
             // loads < ship_capacity
@@ -635,6 +679,29 @@ public:
             max_obj_num = min(max_obj_num, ship_capacity - loads);
             berth[berth_id].stock -= max_obj_num;
             loads += max_obj_num;
+
+            int next_berth = calc_next_berth();
+            if (next_berth == berth_id) return;
+            move(next_berth);
+        }
+    }
+
+    int calc_next_berth() {
+        // 普通的以最大的stock来算
+        int max_stock = 0, next_berth_id = berth_id;
+        for (int i = 0; i < berth_num; ++i) {
+            if (berth[i].occupy) continue;
+            if (berth[i].stock > max_stock) {
+                max_stock = berth[i].stock;
+                next_berth_id = i;
+            }
+        }
+
+        if (max_stock - berth[berth_id].stock > 100) {
+            return next_berth_id;
+        }
+        else {
+            return berth_id;
         }
     }
 
@@ -642,6 +709,7 @@ public:
     ship_enum status, _status;
     int berth_id;
     int loads;
+    int count_down;
 } ship[ship_num+1];
 
 
@@ -784,8 +852,9 @@ void Init() {
 
     fprintf(stdout, "OK\n");
     fflush(stdout);
-
+#ifdef DEBUG_FLAG
     fprintf(stderr, "#1 Init Finish\n");
+#endif
 }
 
 void Input(int &frame_id) {
@@ -823,26 +892,39 @@ void Input(int &frame_id) {
 
 
 int main() {
+#ifdef DEBUG_FLAG
     fprintf(stderr, "#0 Program start");
+#endif
     Init();
     int frame_id;
     for (int frame = 0; frame < 15000; frame++) {
-        if (frame == 12900) {
-            for (int i = 0; i < 5; ++i) {
-                ship[i].go();
-            }
-        }
+
         Input(frame_id);
+#ifdef DEBUG_FLAG
         fprintf(stderr, "#2 Input Finish\n");
+#endif
         remove_outdated_obj(frame_id);
 
         for (int i = 0; i < robot_num; ++i) robot[i].think();
         handle_conflict();
         for (int i = 0; i < robot_num; ++i) robot[i].act();
-        fprintf(stdout, "OK\n");
+        for (int i = 0; i < ship_num; ++i) ship[i].act();
+        if (frame == 13000) {
+            for (int i = 0; i < 5; ++i) {
+                ship[i].go();
+            }
+        }
+        printf("OK\n");
         fflush(stdout);
+#ifdef DEBUG_FLAG
         fprintf(stderr, "#4 Output Finish\n");
+#endif
     }
+#ifdef DEBUG_FLAG
     fprintf(stderr, "#TOTAL VALUE %d\n", tot_value);
+    for (int i = 0; i < berth_num; ++i) {
+        fprintf(stderr, "#BERTH%d: REMAIN STOCK %d\n", i, berth[i].stock);
+    }
+#endif
     return 0;
 }
