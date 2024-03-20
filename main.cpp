@@ -7,8 +7,8 @@
 
 //#define DEBUG_FLAG
 //#define DEBUG_ROBOT
-#define DEBUG_SHIP
-#define DEBUG_BERTH
+//#define DEBUG_SHIP
+//#define DEBUG_BERTH
 //#define OUTPUT_DIJKSTRA
 #define min(x, y) ((x) < (y) ? (x) : (y))
 
@@ -698,9 +698,11 @@ public:
 
     void act() {
         if (berth_id != -1 && frame + berth[berth_id].transport_time == 15000) {
+#ifdef DEBUG_SHIP
             fprintf(stderr, "#SHIP%d: TIME UP, frame:%d, time:%d\n", id, frame, berth[berth_id].transport_time);
             fprintf(stderr, "#status: rec %d\n", status);
             fprintf(stderr, "#berth_id: rec %d\n", berth_id);
+#endif
             go();
             return;
         }
@@ -837,16 +839,16 @@ void debug_print_dist(int berth_id) {
     fflush(stderr);
 }
 
-int pd[800][200][200];
-void calc_pd() {
-    for (int a = 0; a < 400; ++a) {
-        for (int bx = 0; bx < 200; ++bx) {
-            for (int by = 0; by < 200; ++by) {
-                pd[a][bx][by] = inf_dist;
-            }
-        }
-    }
-}
+//int pd[800][200][200];
+//void calc_pd() {
+//    for (int a = 0; a < 400; ++a) {
+//        for (int bx = 0; bx < 200; ++bx) {
+//            for (int by = 0; by < 200; ++by) {
+//                pd[a][bx][by] = inf_dist;
+//            }
+//        }
+//    }
+//}
 
 void Init() {
     srand((unsigned int)time(NULL));
@@ -953,7 +955,7 @@ void Init() {
     }
 
 
-    calc_pd();
+//    calc_pd();
     printf("OK\n");
     fflush(stdout);
 #ifdef DEBUG_FLAG
