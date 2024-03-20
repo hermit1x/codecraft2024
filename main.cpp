@@ -7,8 +7,8 @@
 
 //#define DEBUG_FLAG
 //#define DEBUG_ROBOT
-//#define DEBUG_SHIP
-//#define DEBUG_BERTH
+#define DEBUG_SHIP
+#define DEBUG_BERTH
 //#define OUTPUT_DIJKSTRA
 #define min(x, y) ((x) < (y) ? (x) : (y))
 
@@ -336,6 +336,22 @@ public:
     }
 
     int calc_best_obj() {
+        // 最大化 value / dist
+        double max_value = 0;
+        int res = -1, obj_x, obj_y, obj_dis, obj_v;
+        for (int i = 0; i < objects.size(); ++i) {
+            obj_x = objects[i].x;
+            obj_y = objects[i].y;
+            obj_v = objects[i].value;
+            obj_dis = mat[obj_x][obj_y].dist[dest_berth];
+            if (!reachable[obj_x][obj_y]) continue;
+            if (objects[i].time_appear + 1000 + 500 < frame + obj_dis) continue;
+            if (max_value < 1.0 * obj_v / obj_dis) {
+                max_value = 1.0 * obj_v / obj_dis;
+                res = i;
+            }
+        }
+        return res;
         /*
         // 选当前价值最大的且能拿得到的
         int max_val = 0, res = -1;
@@ -353,7 +369,7 @@ public:
         }
         return res;
         */
-
+        /*
         // 简单以最近的来选
         int min_dis = inf_dist, res = -1;
         int obj_x, obj_y, obj_dis;
@@ -369,6 +385,7 @@ public:
             }
         }
         return res;
+         */
     }
 
     void clear_dis() {
@@ -602,7 +619,7 @@ void handle_conflict() {
 int ship_capacity;
 class Ship {
 public:
-    Ship() : status(SHIP_NORMAL), berth_id(-1) {};
+    Ship() : status(SHIP_NORMAL), berth_id(-1), frame(1) {};
 
     void go() {
         if (berth_id == -1) return;
@@ -621,6 +638,7 @@ public:
     void move(int dest) {
         if (berth_id == -1) {
             count_down = berth[dest].transport_time;
+            if (frame + 2 * berth[dest].transport_time > 15000) return;
         }
         else {
             berth[berth_id].occupy = 0;
@@ -638,6 +656,15 @@ public:
 
     void update(int state_code, int _id, int _frame) {
         frame++;
+#ifdef DEBUG_SHIP
+        if (_frame != frame) {
+            fprintf(stderr, "#SHIP%d: FRAME SYNC FAILD rec: %d, get: %d\n", id, frame, _frame);
+        }
+#endif
+        if (_frame != frame) {
+            count_down -= _frame - frame - 1;
+            frame = _frame;
+        }
         count_down--;
         if (state_code == 0)
             _status = SHIP_SHIPPING;
@@ -670,6 +697,13 @@ public:
     }
 
     void act() {
+        if (berth_id != -1 && frame + berth[berth_id].transport_time == 15000) {
+            fprintf(stderr, "#SHIP%d: TIME UP, frame:%d, time:%d\n", id, frame, berth[berth_id].transport_time);
+            fprintf(stderr, "#status: rec %d\n", status);
+            fprintf(stderr, "#berth_id: rec %d\n", berth_id);
+            go();
+            return;
+        }
         if (status == SHIP_NORMAL) {
 #ifdef DEBUG_SHIP
             fprintf(stderr, "#SHIP%d: normal count_down: %d\n", id, count_down);
@@ -701,10 +735,10 @@ public:
             berth[berth_id].stock -= max_obj_num;
             loads += max_obj_num;
 
-            if (count_down <= -30) {
+            if (count_down <= -20) {
                 int next_berth = calc_next_berth();
                 if (next_berth == berth_id) return;
-//                if (loads > 0.90 * ship_capacity) go();
+                if (frame + 500 + berth[next_berth].transport_time > 15000) return;
                 move(next_berth);
             }
         }
@@ -801,6 +835,17 @@ void debug_print_dist(int berth_id) {
         fprintf(stderr, "\n");
     }
     fflush(stderr);
+}
+
+int pd[800][200][200];
+void calc_pd() {
+    for (int a = 0; a < 400; ++a) {
+        for (int bx = 0; bx < 200; ++bx) {
+            for (int by = 0; by < 200; ++by) {
+                pd[a][bx][by] = inf_dist;
+            }
+        }
+    }
 }
 
 void Init() {
@@ -907,6 +952,8 @@ void Init() {
         berth[i].value *= sum_robot;
     }
 
+
+    calc_pd();
     printf("OK\n");
     fflush(stdout);
 #ifdef DEBUG_FLAG
@@ -975,11 +1022,11 @@ int main() {
         }
         for (int i = 0; i < robot_num; ++i) robot[i].act();
         for (int i = 0; i < ship_num; ++i) ship[i].act();
-        if (frame == 13000) {
-            for (int i = 0; i < 5; ++i) {
-                ship[i].go();
-            }
-        }
+//        if (frame == 13500) {
+//            for (int i = 0; i < 5; ++i) {
+//                ship[i].go();
+//            }
+//        }
         printf("OK\n");
         fflush(stdout);
 #ifdef DEBUG_FLAG
