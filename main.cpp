@@ -7,8 +7,9 @@
 
 //#define DEBUG_FLAG
 //#define DEBUG_ROBOT
-#define DEBUG_SHIP
-#define DEBUG_BERTH
+//#define DEBUG_ROBOT_SCHEDULE
+//#define DEBUG_SHIP
+//#define DEBUG_BERTH
 //#define OUTPUT_DIJKSTRA
 #define min(x, y) ((x) < (y) ? (x) : (y))
 
@@ -57,6 +58,10 @@ inline bool is_legal(int x, int y) {
     return in_mat(x, y) && is_land(x, y);
 }
 
+inline bool is_reachable(int x, int y, int berth_id) {
+    return is_legal(x, y) && mat[x][y].dist[berth_id] != inf_dist;
+}
+
 class Obj {
 public:
     Obj(): x(-1), y(-1) {};
@@ -82,16 +87,16 @@ void remove_outdated_obj(int frame_id) {
 
 class Berth {
 public:
-    Berth() : value(0.0), tot_value(0), tot_stock(0), stock(0), capacity(0), booked(0), closed(0) {}
+    Berth() : value(0.0), tot_value(0), tot_stock(0), stock(0), capacity(0), booked(0), closed(0), future_value(0.00001), workers(0) {}
 
     bool is_in(int ax, int ay) {
         return x <= ax && ax <= x + 3 && y <= ay && ay <= y + 3;
     }
 
     int id, x, y, transport_time, velocity;
-    int occupy;
+    int occupy, workers;
     int stock, capacity, booked, closed, remain_value;
-    double value;
+    double value, future_value;
     int tot_value, tot_stock;
     std::queue<int> stocks;
 } berth[berth_num+2];
@@ -121,10 +126,19 @@ struct Pos {
 
 void calc_is_safe(int id);
 
+struct BerthInfo {
+    int bid, dis;
+    double dif; // = value - workers
+    BerthInfo(int _bid, double _dif, int _dis) : bid(_bid), dif(_dif), dis(_dis) {};
+    bool operator < (const BerthInfo &x) const {
+        return dis < x.dis;
+    }
+};
+
 class Robot {
 public:
     Robot() {}
-    Robot(int _x, int _y, int _id) : x(_x), y(_y), id(_id), status(NOTHING), frame(1), carry(0) {
+    Robot(int _x, int _y, int _id) : x(_x), y(_y), id(_id), status(NOTHING), frame(1), carry(0), dest_berth(berth_num) {
         for (int i = 0; i < 200; ++i) {
             for (int j = 0; j < 200; ++j) {
                 dis[i][j] = inf_dist;
@@ -250,6 +264,19 @@ public:
         if (act_before_move == ROBOT_GET) {
             printf("get %d\n", id);
             berth[dest_berth].booked += 1;
+
+            // 消掉future_value
+            int d = inf_dist, b = berth_num, ox = dest_obj.x, oy = dest_obj.y;
+            for (int j = 0; j < berth_num; ++j) {
+                if (d > mat[ox][oy].dist[j]) {
+                    d = mat[ox][oy].dist[j];
+                    b = j;
+                }
+            }
+            berth[b].future_value -= 1.0 * dest_obj.value / d;
+#ifdef DEBUG_ROBOT_SCHEDULE
+            fprintf(stderr, "future value sub %f to berth %d, v: %d, d: %d\n", 1.0 * dest_obj.value / d, b, dest_obj.value, d);
+#endif
             carry = 1;
         }
         if (act_before_move == ROBOT_PULL) {
@@ -478,6 +505,49 @@ public:
     }
 
     void calc_best_berth() {
+        double l_wokers[berth_num], l_future[berth_num], sum_future = 0;
+        for (int i = 0; i < berth_num; ++i) {
+            l_wokers[i] = berth[i].workers;
+            l_future[i] = berth[i].future_value;
+//            fprintf(stderr, "# berth %d: before calc w:%f, v:%f\n", i, l_wokers[i], l_future[i]);
+            sum_future += l_future[i];
+        }
+        for (int i = 0; i < berth_num; ++i) {
+            l_wokers[i] /= 10.0;
+            l_future[i] /= sum_future;
+        }
+        if (l_wokers[dest_berth] - l_future[dest_berth] > 0.15) {
+#ifdef DEBUG_ROBOT_SCHEDULE
+            fprintf(stderr, "# NOT BALANCE by bot:%d, dest:%d\n", id, dest_berth);
+            for (int i = 0; i < berth_num; ++i) {
+                fprintf(stderr, "# berth %d: w:%.0f, v:%f\n", i, l_wokers[i] * 10, l_future[i]);
+            }
+#endif
+
+            std::vector<BerthInfo> berth_vec;
+            for (int i = 0; i < berth_num; ++i) {
+                if (is_reachable(x, y, i) && l_future[i] - l_wokers[i] > 0.15) {
+                    berth_vec.push_back(BerthInfo(i, l_future[i] - l_wokers[i], mat[x][y].dist[i]));
+                }
+            }
+            std::sort(berth_vec.begin(), berth_vec.end());
+#ifdef DEBUG_ROBOT_SCHEDULE
+            for (int i = 0; i < berth_vec.size(); ++i) {
+                fprintf(stderr, "berth id:%d, dis:%d, val:%f\n", berth_vec[i].bid, berth_vec[i].dis, berth_vec[i].dif);
+            }
+#endif
+            if (berth_vec.size() != 0 && berth_vec[0].dis <= 200) {
+                berth[dest_berth].workers -= 1;
+                dest_berth = berth_vec[0].bid;
+                berth[dest_berth].workers += 1;
+#ifdef DEBUG_ROBOT_SCHEDULE
+                fprintf(stderr, "# REARRANGE bot:%d, to dest:%d\n", id, dest_berth);
+#endif
+                return;
+            }
+        }
+
+        berth[dest_berth].workers -= 1;
         int min_dis = inf_dist, min_berth = -1;
         for (int i = 0; i < berth_num; ++i) {
             if (berth[i].closed) continue;
@@ -493,6 +563,7 @@ public:
 #endif
             dest_berth = 0;
         }
+        berth[dest_berth].workers += 1;
     }
 
 
@@ -726,7 +797,7 @@ public:
 #endif
             if (berth_id == -1) {
                 int next_berth = calc_next_berth();
-                fprintf(stderr, "#SHIP:%d BEGIN, to: %d\n", id, next_berth);
+//                fprintf(stderr, "#SHIP:%d BEGIN, to: %d\n", id, next_berth);
                 move(next_berth);
                 return;
             }
@@ -786,7 +857,7 @@ public:
     int calc_next_berth() {
         if (frame <= 5) {
             for (int i = rand(); ; i = rand()) {
-                fprintf(stderr, "rand: %d\n", i % berth_num);
+//                fprintf(stderr, "rand: %d\n", i % berth_num);
                 if (berth[i % berth_num].occupy > 0) continue;
                 return i % berth_num;
             }
@@ -963,12 +1034,12 @@ void Init() {
         for (int y = 0; y < 200; ++y) {
             dominator = 0;
             for (int i = 0; i < berth_num; ++i) {
-                if (mat[x][y].dist[i] != 0 && mat[x][y].dist[i] != inf_dist) {
+                if (is_reachable(x, y, i) &&  mat[x][y].dist[i] != 0) {
                     dominator += 1.0 / (double)mat[x][y].dist[i];
                 }
             }
             for (int i = 0; i < berth_num; ++i) {
-                if (mat[x][y].dist[i] != 0 && mat[x][y].dist[i] != inf_dist) {
+                if (is_reachable(x, y, i) &&  mat[x][y].dist[i] != 0) {
                     berth[i].value += 1.0 / ((double)mat[x][y].dist[i] * (double)mat[x][y].dist[i]) / dominator;
                 }
             }
@@ -981,7 +1052,7 @@ void Init() {
     for (int i = 0; i < berth_num; ++i) {
         sum_robot = 0;
         for (int j = 0; j < robot_num; ++j) {
-            if (mat[ robot[j].x ][ robot[j].y ].dist[i] != inf_dist) sum_robot++;
+            if (is_reachable( robot[j].x, robot[j].y, i)) sum_robot++;
         }
         berth[i].value *= sum_robot;
     }
@@ -1001,13 +1072,24 @@ void Input(int &frame_id) {
     scanf("%d%d", &frame_id, &money);
     scanf("%d", &k);
 
-    fprintf(stderr, "#2 Input frame: %d, money: %d, new_obj: %d\n", frame_id, money, k);
+//    fprintf(stderr, "#2 Input frame: %d, money: %d, new_obj: %d\n", frame_id, money, k);
     // 新增的货物信息
     int x, y, value;
     for (int i = 0; i < k; ++i) {
         scanf("%d%d%d", &x, &y, &value);
         objects.push_back(Obj(x, y, value, frame_id));
         mat[x][y].has_obj = true;
+        int d = inf_dist, b = berth_num;
+        for (int j = 0; j < berth_num; ++j) {
+            if (d > mat[x][y].dist[j]) {
+                d = mat[x][y].dist[j];
+                b = j;
+            }
+        }
+        berth[b].future_value += 1.0 * value / d;
+#ifdef DEBUG_ROBOT_SCHEDULE
+        fprintf(stderr, "future value add %f to berth %d, v: %d, d: %d\n", 1.0 * value / d, b, value, d);
+#endif
     }
 
     // 当前的机器人信息
@@ -1032,7 +1114,9 @@ void calc_close_berth(int frame) {
     for (int i = 0; i < berth_num; ++i) {
         if (berth[i].closed) continue;
         if (berth[i].occupy == 0 && berth[i].transport_time + 500 + frame > 15000) {
+#ifdef DEBUG_BERTH
             fprintf(stderr, "# BERTH%d close\n", i);
+#endif
             berth[i].closed = 1;
         }
     }
@@ -1087,7 +1171,7 @@ int main() {
         fprintf(stderr, "#4 Output Finish\n");
 #endif
     }
-    fprintf(stderr, "v_full speed: %d\n\n", v_full);
+//    fprintf(stderr, "v_full speed: %d\n\n", v_full);
 #ifdef DEBUG_BERTH
     fprintf(stderr, "#TOTAL VALUE %d\n", tot_value);
     for (int i = 0; i < berth_num; ++i) {
