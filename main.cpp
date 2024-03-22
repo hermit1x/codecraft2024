@@ -21,6 +21,8 @@ const int robot_num = 10;
 const int berth_num = 10;
 const int ship_num = 5;
 const int inf_dist = 1e6;
+const int end_begin = 12000;
+const int end_mid = 13000;
 
 int tot_value = 0;
 
@@ -58,16 +60,44 @@ inline bool is_legal(int x, int y) {
 class Obj {
 public:
     Obj(): x(-1), y(-1) {};
-    Obj(int _x, int _y, int _value, int _t) : x(_x), y(_y), value(_value), time_appear(_t), obtain(0) {};
+    Obj(int _x, int _y, int _value, int _t) : x(_x), y(_y), value(_value), time_appear(_t) {
+        dis_berth = inf_dist;
+        berth = 0;
+        for (int i = 0; i < berth_num; ++i) {
+            if (dis_berth > mat[x][y].dist[i]) {
+                dis_berth = mat[x][y].dist[i];
+                berth = i;
+            }
+        }
+    };
 
-    int x, y, value, time_appear, obtain;
+    int x, y, value, time_appear, berth, dis_berth;
 };
+
+class Berth {
+public:
+    Berth() : stock(0), land_value(0.0), obj_value(0.0), tot_value(0), tot_stock(0), workers(0), remain_value(0), available(1) {}
+
+    bool is_in(int ax, int ay) {
+        return x <= ax && ax <= x + 3 && y <= ay && ay <= y + 3;
+    }
+
+    int id, x, y, transport_time, velocity;
+    int occupy, available;
+    int stock, remain_value;
+    double land_value, obj_value;
+    int tot_value, tot_stock;
+    int workers;
+    std::queue<int> stocks;
+} berth[berth_num+1];
+
 std::vector<Obj> objects;
 void remove_outdated_obj(int frame_id) {
     std::vector<Obj>::iterator it = objects.begin();
     while (it != objects.end()) {
         if (it->time_appear + 1000 < frame_id) {
             mat[it->x][it->y].has_obj = false;
+            berth[it->berth].obj_value -= 1.0 * it->value / it->dis_berth;
             it++;
         }
         else break;
@@ -77,21 +107,6 @@ void remove_outdated_obj(int frame_id) {
     fprintf(stderr, "# Frame %d objects.size() = %lu\n", frame_id, objects.size());
 #endif
 }
-
-class Berth {
-public:
-    Berth() : value(0.0), tot_value(0), tot_stock(0) {}
-
-    bool is_in(int ax, int ay) {
-        return x <= ax && ax <= x + 3 && y <= ay && ay <= y + 3;
-    }
-
-    int id, x, y, transport_time, velocity;
-    int occupy;
-    int stock;
-    double value;
-    int tot_value, tot_stock;
-} berth[berth_num+2];
 
 struct PQnode2 {
     PQnode2() {};
@@ -115,6 +130,16 @@ struct Pos {
         return v < x.v;
     }
 };
+
+//struct BerthInfo {
+//    BerthInfo() {}
+//    BerthInfo(int x, double y) : id(x), dif(y) {}
+//    int id;
+//    double dif;
+//    bool operator < (const BerthInfo &x) const {
+//        return dif < x.dif;
+//    }
+//};
 
 void calc_is_safe(int id);
 
@@ -156,7 +181,7 @@ public:
                 }
             }
         }
-
+        dest_berth = berth_num;
         calc_best_berth();
     }
 
@@ -221,6 +246,7 @@ public:
         if (status == NOTHING) {
             if (choose_obj()) {
                 status = TO_OBJ;
+                berth[dest_obj.berth].obj_value -= 1.0 * dest_obj.value / dest_obj.dis_berth;
 #ifdef DEBUG_ROBOT
                 fprintf(stderr, "# ROBOT:%d get object\n", id);
 #endif
@@ -253,7 +279,9 @@ public:
 #endif
             berth[dest_berth].tot_value += dest_obj.value;
             berth[dest_berth].tot_stock += 1;
+            berth[dest_berth].remain_value += dest_obj.value;
             berth[dest_berth].stock += 1;
+            berth[dest_berth].stocks.push(dest_obj.value);
             printf("pull %d\n", id);
             carry = 0;
         }
@@ -469,20 +497,67 @@ public:
     }
 
     void calc_best_berth() {
-        int min_dis = inf_dist, min_berth = -1;
+//        if (1.0 * rand() / RAND_MAX < 0.5) {
+//            berth[dest_berth].workers += 1;
+//            double b_vs[berth_num], b_ws[berth_num], sum_v = 0;
+//            for (int i = 0; i < berth_num; ++i) {
+//                b_vs[i] = berth[i].obj_value;
+//                sum_v += b_vs[i];
+//                b_ws[i] = berth[i].workers / 10.0;
+//            }
+//            berth[dest_berth].workers -= 1;
+//            for (int i = 0; i < berth_num; ++i) {
+//                b_vs[i] /= sum_v;
+//            }
+//            std::vector<BerthInfo> bvec(10);
+//            for (int i = 0; i < berth_num; ++i) {
+//                bvec[i] = BerthInfo(i, b_ws[i] - b_vs[i]);
+//            }
+//            for (int i = 0; i < berth_num; ++i) {
+//                fprintf(stderr, "#debug %d value: %.3f, worker: %.1f, result: %.3f\n", i, b_vs[i], b_ws[i], bvec[i].dif);
+//            }
+//            std::sort(bvec.begin(), bvec.end());
+//            // 前两个缺人的泊位，看看要不要去
+//            if ( mat[x][y].dist[bvec[0].id] != inf_dist && mat[x][y].dist[bvec[1].id] != inf_dist) {
+//                // 都在范围内
+//                if (1.0 * rand() / RAND_MAX < (bvec[0].dif) / (bvec[0].dif + bvec[1].dif)) {
+//                    dest_berth = bvec[0].id;
+//                }
+//                else {
+//                    dest_berth = bvec[1].id;
+//                }
+//                berth[dest_berth].workers += 1;
+//                return;
+//            }
+//            if ( mat[x][y].dist[bvec[0].id] != inf_dist && mat[x][y].dist[bvec[1].id] == inf_dist) {
+//                dest_berth = bvec[0].id;
+//                berth[dest_berth].workers += 1;
+//                return;
+//            }
+//            if ( mat[x][y].dist[bvec[0].id] == inf_dist && mat[x][y].dist[bvec[1].id] != inf_dist) {
+//                dest_berth = bvec[1].id;
+//                berth[dest_berth].workers += 1;
+//                return;
+//            }
+//        }
+
+        berth[dest_berth].workers -= 1;
+        int min_dis = inf_dist, min_berth = berth_num;
         for (int i = 0; i < berth_num; ++i) {
+            if (!berth[i].available) continue;
             if (min_dis > mat[x][y].dist[i]) {
                 min_dis = mat[x][y].dist[i];
                 min_berth = i;
             }
         }
         dest_berth = min_berth;
-        if (min_berth == -1) {
+        if (min_berth == berth_num) {
 #ifdef DEBUG_ROBOT
             fprintf(stderr, "# ROBOT:%d NO Reachable Berth\n", id);
 #endif
-            dest_berth = 0;
+//            dest_berth = 0;
         }
+        berth[dest_berth].workers += 1;
     }
 
 
@@ -624,7 +699,7 @@ public:
     void go() {
         if (berth_id == -1) return;
 #ifdef DEBUG_SHIP
-        fprintf(stderr, "#SHIP:%d LEAVE\n", id);
+        fprintf(stderr, "#SHIP:%d LEAVE %d, frame:%d\n", id, berth_id, frame);
 #endif
         printf("go %d\n", id);
         berth[berth_id].occupy = 0;
@@ -678,7 +753,7 @@ public:
             if (count_down == 0) {
                 status = SHIP_NORMAL;
 #ifdef DEBUG_SHIP
-                fprintf(stderr, "#SHIP%d: Arrive berth:%d\n", id, berth_id);
+                fprintf(stderr, "#SHIP%d: Arrive berth:%d, frame:%d\n", id, berth_id, frame);
 #endif
             }
         }
@@ -699,16 +774,14 @@ public:
     void act() {
         if (berth_id != -1 && frame + berth[berth_id].transport_time == 15000) {
 #ifdef DEBUG_SHIP
-            fprintf(stderr, "#SHIP%d: TIME UP, frame:%d, time:%d\n", id, frame, berth[berth_id].transport_time);
-            fprintf(stderr, "#status: rec %d\n", status);
-            fprintf(stderr, "#berth_id: rec %d\n", berth_id);
+            fprintf(stderr, "#SHIP:%d TIME UP, frame:%d, time:%d\n", id, frame, berth[berth_id].transport_time);
 #endif
             go();
             return;
         }
         if (status == SHIP_NORMAL) {
 #ifdef DEBUG_SHIP
-            fprintf(stderr, "#SHIP%d: normal count_down: %d\n", id, count_down);
+//            fprintf(stderr, "#SHIP%d: normal count_down: %d\n", id, count_down);
 #endif
             if (berth_id == -1) {
                 for (int i = 0; i < berth_num; ++i) {
@@ -735,11 +808,22 @@ public:
             max_obj_num = min(max_obj_num, berth[berth_id].velocity);
             max_obj_num = min(max_obj_num, ship_capacity - loads);
             berth[berth_id].stock -= max_obj_num;
+            for (int i = 0; i < max_obj_num; ++i) {
+                berth[berth_id].remain_value -= berth[berth_id].stocks.front();
+                berth[berth_id].stocks.pop();
+            }
             loads += max_obj_num;
 
-            if (count_down <= -20) {
+
+            if (frame > end_begin) return;
+            if ((berth[berth_id].stock == 0) || count_down <= -20 || berth[berth_id].available == 0) {
+                if (loads + 5 > ship_capacity) {
+                    go();
+                    return;
+                }
                 int next_berth = calc_next_berth();
                 if (next_berth == berth_id) return;
+                if (frame > end_mid && frame + 500 + berth[berth_id].transport_time + 5 > 15000) return;
                 if (frame + 500 + berth[next_berth].transport_time > 15000) return;
                 move(next_berth);
             }
@@ -751,6 +835,7 @@ public:
         int max_stock = 0, next_berth_id = berth_id;
         for (int i = 0; i < berth_num; ++i) {
             if (berth[i].occupy) continue;
+            if (!berth[i].available) continue;
             if (berth[i].stock > max_stock) {
                 max_stock = berth[i].stock;
                 next_berth_id = i;
@@ -937,7 +1022,7 @@ void Init() {
             }
             for (int i = 0; i < berth_num; ++i) {
                 if (mat[x][y].dist[i] != 0 && mat[x][y].dist[i] != inf_dist) {
-                    berth[i].value += 1.0 / ((double)mat[x][y].dist[i] * (double)mat[x][y].dist[i]) / dominator;
+                    berth[i].land_value += 1.0 / ((double)mat[x][y].dist[i] * (double)mat[x][y].dist[i]) / dominator;
                 }
             }
         }
@@ -951,7 +1036,7 @@ void Init() {
         for (int j = 0; j < robot_num; ++j) {
             if (mat[ robot[j].x ][ robot[j].y ].dist[i] != inf_dist) sum_robot++;
         }
-        berth[i].value *= sum_robot;
+        berth[i].land_value *= sum_robot;
     }
 
 
@@ -974,8 +1059,11 @@ void Input(int &frame_id) {
     int x, y, value;
     for (int i = 0; i < k; ++i) {
         scanf("%d%d%d", &x, &y, &value);
-        objects.push_back(Obj(x, y, value, frame_id));
+        Obj tmp = Obj(x, y, value, frame_id);
+        objects.push_back(tmp);
         mat[x][y].has_obj = true;
+        berth[tmp.berth].obj_value += 1.0 * tmp.value / tmp.dis_berth;
+//        fprintf(stderr, "value %d, dis_berth %d\n", tmp.value, tmp.dis_berth);
     }
 
     // 当前的机器人信息
@@ -995,7 +1083,25 @@ void Input(int &frame_id) {
     scanf("%s", okk);
 }
 
+struct BerthInfo {
+    int id, rv; // remain value
+    bool operator < (const BerthInfo &x) const {
+        return rv < x.rv;
+    }
+};
 
+void close_some_berth() {
+    std::vector<BerthInfo> vecB(10);
+    for (int i = 0; i < berth_num; ++i) {
+        vecB[i].id = i;
+        vecB[i].rv = berth[i].remain_value;
+    }
+    std::sort(vecB.begin(), vecB.end());
+    for (int i = 0; i < 5; ++i) {
+//        fprintf(stderr, "id: %d, rv: %d\n", vecB[i].id, vecB[i].rv);
+        berth[vecB[i].id].available = 0;
+    }
+}
 
 int main() {
 #ifdef DEBUG_FLAG
@@ -1024,11 +1130,10 @@ int main() {
         }
         for (int i = 0; i < robot_num; ++i) robot[i].act();
         for (int i = 0; i < ship_num; ++i) ship[i].act();
-//        if (frame == 13500) {
-//            for (int i = 0; i < 5; ++i) {
-//                ship[i].go();
-//            }
-//        }
+        if (frame == end_begin) {
+//            for (int i = 0; i < ship_num; ++i) ship[i].go();
+            close_some_berth();
+        }
         printf("OK\n");
         fflush(stdout);
 #ifdef DEBUG_FLAG
@@ -1036,11 +1141,17 @@ int main() {
 #endif
     }
 #ifdef DEBUG_BERTH
-    fprintf(stderr, "#TOTAL VALUE %d\n", tot_value);
+    int remain_value = 0;
     for (int i = 0; i < berth_num; ++i) {
-        fprintf(stderr, "#BERTH%d: guess value:%lf, tot value:%d, tot stock %d, remain stock %d\n", i, berth[i].value, berth[i].tot_value, berth[i].tot_stock, berth[i].stock);
+        int sum = 0;
+        while (!berth[i].stocks.empty()) {
+            sum += berth[i].stocks.front();
+            berth[i].stocks.pop();
+        }
+        remain_value += sum;
+        fprintf(stderr, "#BERTH%d: remain stock %d, remain value: %d, v:%d\n", i, berth[i].stock, berth[i].remain_value, berth[i].velocity);
     }
-    fprintf(stderr, "\n\n");
+    fprintf(stderr, "REMIAIN VALUE: %d !!\n\n", remain_value);
     fflush(stderr);
 #endif
     return 0;
