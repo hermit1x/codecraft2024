@@ -5,7 +5,7 @@
 #include <memory>
 #include <time.h>
 
-#define DEBUG_FLAG
+//#define DEBUG_FLAG
 //#define DEBUG_ROBOT
 #define DEBUG_SHIP
 #define DEBUG_BERTH
@@ -90,9 +90,10 @@ public:
 
     int id, x, y, transport_time, velocity;
     int occupy;
-    int stock, capacity, booked, closed;
+    int stock, capacity, booked, closed, remain_value;
     double value;
     int tot_value, tot_stock;
+    std::queue<int> stocks;
 } berth[berth_num+2];
 
 struct PQnode2 {
@@ -256,6 +257,8 @@ public:
             tot_value += dest_obj.value;
             if (frame > 15000 - berth[dest_berth].transport_time) berth[dest_berth].stock -= 1; // 载不到的就不记了
 #endif
+            berth[dest_berth].stocks.push(dest_obj.value);
+            berth[dest_berth].remain_value += dest_obj.value;
             berth[dest_berth].tot_value += dest_obj.value;
             berth[dest_berth].tot_stock += 1;
             berth[dest_berth].stock += 1;
@@ -737,6 +740,10 @@ public:
             berth[berth_id].stock -= max_obj_num;
             loads += max_obj_num;
             berth[berth_id].capacity -= max_obj_num;
+            for (int i = 0; i < max_obj_num; ++i) {
+                berth[berth_id].remain_value -= berth[berth_id].stocks.front();
+                berth[berth_id].stocks.pop();
+            }
             if (max_obj_num == berth[berth_id].velocity) v_full++;
 
             if (loads == ship_capacity) {
@@ -765,13 +772,13 @@ public:
                     move(next_berth); // 平均期望也是20次就走？
                     return;
                 }
-                if (frame > 10000 && rand() % 100 < 10) {
-#ifdef DEBUG_SHIP
-                    fprintf(stderr, "#SHIP:%d EARLY LEAVE %d, loads_remain: %d\n", id, berth_id, ship_capacity - loads );
-#endif
-                    move(next_berth); // 平均期望也是20次就走？
-                    return;
-                }
+//                if (frame > 8000 && rand() % 100 < 10) {
+//#ifdef DEBUG_SHIP
+//                    fprintf(stderr, "#SHIP:%d EARLY LEAVE %d, loads_remain: %d\n", id, berth_id, ship_capacity - loads );
+//#endif
+//                    move(next_berth); // 平均期望也是20次就走？
+//                    return;
+//                }
             }
         }
     }
@@ -1084,7 +1091,7 @@ int main() {
 #ifdef DEBUG_BERTH
     fprintf(stderr, "#TOTAL VALUE %d\n", tot_value);
     for (int i = 0; i < berth_num; ++i) {
-        fprintf(stderr, "#BERTH%d: guess value:%lf, tot value:%d, tot stock %d, remain stock %d, t_time %d\n", i, berth[i].value, berth[i].tot_value, berth[i].tot_stock, berth[i].stock, berth[i].transport_time);
+        fprintf(stderr, "#BERTH%d: remain value:%d, tot value:%d, tot stock %d, remain stock %d, t_time %d\n", i, berth[i].remain_value, berth[i].tot_value, berth[i].tot_stock, berth[i].stock, berth[i].transport_time);
     }
     fprintf(stderr, "\n\n");
     fflush(stderr);
