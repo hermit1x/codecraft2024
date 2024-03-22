@@ -70,20 +70,6 @@ public:
     int x, y, value, time_appear, obtain;
 };
 std::vector<Obj> objects;
-void remove_outdated_obj(int frame_id) {
-    std::vector<Obj>::iterator it = objects.begin();
-    while (it != objects.end()) {
-        if (it->time_appear + 1000 < frame_id) {
-            mat[it->x][it->y].has_obj = false;
-            it++;
-        }
-        else break;
-    }
-    objects.erase(objects.begin(), it);
-#ifdef DEBUG_FLAG
-    fprintf(stderr, "# Frame %d objects.size() = %lu\n", frame_id, objects.size());
-#endif
-}
 
 class Berth {
 public:
@@ -100,6 +86,29 @@ public:
     int tot_value, tot_stock;
     std::queue<int> stocks;
 } berth[berth_num+2];
+
+void remove_outdated_obj(int frame_id) {
+    std::vector<Obj>::iterator it = objects.begin();
+    while (it != objects.end()) {
+        if (it->time_appear + 1000 < frame_id) {
+            mat[it->x][it->y].has_obj = false;
+            int d = inf_dist, b = berth_num, ox = it->x, oy = it->y;
+            for (int j = 0; j < berth_num; ++j) {
+                if (d > mat[ox][oy].dist[j]) {
+                    d = mat[ox][oy].dist[j];
+                    b = j;
+                }
+            }
+            berth[b].future_value -= 1.0 * it->value / d;
+            it++;
+        }
+        else break;
+    }
+    objects.erase(objects.begin(), it);
+#ifdef DEBUG_FLAG
+    fprintf(stderr, "# Frame %d objects.size() = %lu\n", frame_id, objects.size());
+#endif
+}
 
 struct PQnode2 {
     PQnode2() {};
