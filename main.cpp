@@ -5,10 +5,10 @@
 #include <memory>
 #include <time.h>
 
-//#define DEBUG_FLAG
+#define DEBUG_FLAG
 //#define DEBUG_ROBOT
-//#define DEBUG_SHIP
-//#define DEBUG_BERTH
+#define DEBUG_SHIP
+#define DEBUG_BERTH
 //#define OUTPUT_DIJKSTRA
 #define min(x, y) ((x) < (y) ? (x) : (y))
 
@@ -23,6 +23,8 @@ const int ship_num = 5;
 const int inf_dist = 1e6;
 
 int tot_value = 0;
+
+int v_full = 0;
 
 // 右 左 上 下 不动
 const int mov_x[6] = {0, 0, -1, 1, 0, 0};
@@ -80,7 +82,7 @@ void remove_outdated_obj(int frame_id) {
 
 class Berth {
 public:
-    Berth() : value(0.0), tot_value(0), tot_stock(0) {}
+    Berth() : value(0.0), tot_value(0), tot_stock(0), stock(0), capacity(0), booked(0), closed(0) {}
 
     bool is_in(int ax, int ay) {
         return x <= ax && ax <= x + 3 && y <= ay && ay <= y + 3;
@@ -88,7 +90,7 @@ public:
 
     int id, x, y, transport_time, velocity;
     int occupy;
-    int stock;
+    int stock, capacity, booked, closed;
     double value;
     int tot_value, tot_stock;
 } berth[berth_num+2];
@@ -210,6 +212,7 @@ public:
             return;
         }
         if (status == TO_SHIP) {
+            if (frame > 12000 && berth[dest_berth].closed) calc_best_berth();
             calc_moves();
             return;
         }
@@ -245,15 +248,18 @@ public:
     void act() {
         if (act_before_move == ROBOT_GET) {
             printf("get %d\n", id);
+            berth[dest_berth].booked += 1;
             carry = 1;
         }
         if (act_before_move == ROBOT_PULL) {
 #ifdef DEBUG_BERTH
             tot_value += dest_obj.value;
+            if (frame > 15000 - berth[dest_berth].transport_time) berth[dest_berth].stock -= 1; // 载不到的就不记了
 #endif
             berth[dest_berth].tot_value += dest_obj.value;
             berth[dest_berth].tot_stock += 1;
             berth[dest_berth].stock += 1;
+            berth[dest_berth].booked -= 1;
             printf("pull %d\n", id);
             carry = 0;
         }
@@ -338,16 +344,16 @@ public:
     int calc_best_obj() {
         // 最大化 value / dist
         double max_value = 0;
-        int res = -1, obj_x, obj_y, obj_dis, obj_v;
+        int res = -1, obj_x, obj_y, obj_dis, obj_v, bias = 0;
         for (int i = 0; i < objects.size(); ++i) {
             obj_x = objects[i].x;
             obj_y = objects[i].y;
             obj_v = objects[i].value;
             obj_dis = mat[obj_x][obj_y].dist[dest_berth];
             if (!reachable[obj_x][obj_y]) continue;
-            if (objects[i].time_appear + 1000 + 500 < frame + obj_dis) continue;
-            if (max_value < 1.0 * obj_v / obj_dis) {
-                max_value = 1.0 * obj_v / obj_dis;
+            if (objects[i].time_appear + 1000 < frame + obj_dis) continue;
+            if (max_value < 1.0 * obj_v / (obj_dis - bias)) {
+                max_value = 1.0 * obj_v / (obj_dis - bias);
                 res = i;
             }
         }
@@ -471,6 +477,7 @@ public:
     void calc_best_berth() {
         int min_dis = inf_dist, min_berth = -1;
         for (int i = 0; i < berth_num; ++i) {
+            if (berth[i].closed) continue;
             if (min_dis > mat[x][y].dist[i]) {
                 min_dis = mat[x][y].dist[i];
                 min_berth = i;
@@ -624,10 +631,11 @@ public:
     void go() {
         if (berth_id == -1) return;
 #ifdef DEBUG_SHIP
-        fprintf(stderr, "#SHIP:%d LEAVE\n", id);
+        fprintf(stderr, "#SHIP:%d LEAVE %d\n", id, berth_id);
 #endif
         printf("go %d\n", id);
-        berth[berth_id].occupy = 0;
+        berth[berth_id].occupy -= 1;
+        berth[berth_id].capacity -= ship_capacity - loads; // 没装满的部分 从记录中撤回来
         count_down = berth[berth_id].transport_time;
         berth_id = -1;
         status = SHIP_SHIPPING;
@@ -641,14 +649,16 @@ public:
             if (frame + 2 * berth[dest].transport_time > 15000) return;
         }
         else {
-            berth[berth_id].occupy = 0;
+            berth[berth_id].occupy -= 1;
+            berth[berth_id].capacity -= ship_capacity - loads;
             count_down = 500;
         }
-        berth[dest].occupy = 1;
+        berth[dest].occupy += 1;
+        berth[dest].capacity += ship_capacity - loads;
         berth_id = dest;
         status = SHIP_SHIPPING;
 #ifdef DEBUG_SHIP
-        fprintf(stderr, "#SHIP:%d TRANSPORT\n", id);
+        fprintf(stderr, "#SHIP:%d TRANSPORT to %d\n", id, dest);
 #endif
         printf("ship %d %d\n", id, dest);
         return;
@@ -658,7 +668,7 @@ public:
         frame++;
 #ifdef DEBUG_SHIP
         if (_frame != frame) {
-            fprintf(stderr, "#SHIP%d: FRAME SYNC FAILD rec: %d, get: %d\n", id, frame, _frame);
+            fprintf(stderr, "#SHIP:%d FRAME SYNC FAILD rec: %d, get: %d\n", id, frame, _frame);
         }
 #endif
         if (_frame != frame) {
@@ -678,28 +688,29 @@ public:
             if (count_down == 0) {
                 status = SHIP_NORMAL;
 #ifdef DEBUG_SHIP
-                fprintf(stderr, "#SHIP%d: Arrive berth:%d\n", id, berth_id);
+                fprintf(stderr, "#SHIP:%d Arrive berth:%d\n", id, berth_id);
 #endif
             }
         }
 
         if (_status != status || _id != berth_id) {
-#ifdef DEBUG_SHIP
+//#ifdef DEBUG_SHIP
             fprintf(stderr, "#ERROR Ship %d Sync Faild\n", id);
             fprintf(stderr, "#status: rec %d, get %d\n", status, _status);
             fprintf(stderr, "#berth_id: rec %d, get %d\n", berth_id, _id);
             fprintf(stderr, "#count_down: %d\n", count_down);
-#endif
+//#endif
             status = _status;
             berth_id = _id;
         }
+        if (status == SHIP_WAITING) count_down++;
 
     }
 
     void act() {
         if (berth_id != -1 && frame + berth[berth_id].transport_time == 15000) {
 #ifdef DEBUG_SHIP
-            fprintf(stderr, "#SHIP%d: TIME UP, frame:%d, time:%d\n", id, frame, berth[berth_id].transport_time);
+            fprintf(stderr, "#SHIP%d: TIME UP, frame:%d, time:%d, stock_remain:%d\n", id, frame, berth[berth_id].transport_time, berth[berth_id].stock);
             fprintf(stderr, "#status: rec %d\n", status);
             fprintf(stderr, "#berth_id: rec %d\n", berth_id);
 #endif
@@ -708,27 +719,16 @@ public:
         }
         if (status == SHIP_NORMAL) {
 #ifdef DEBUG_SHIP
-            fprintf(stderr, "#SHIP%d: normal count_down: %d\n", id, count_down);
+//            fprintf(stderr, "#SHIP:%d normal count_down: %d\n", id, count_down);
 #endif
             if (berth_id == -1) {
-                for (int i = 0; i < berth_num; ++i) {
-                    if (!berth[i].occupy) {
-                        move(i);
-                        return;
-                    }
-                }
-                berth_id = -1;
+                int next_berth = calc_next_berth();
+                fprintf(stderr, "#SHIP:%d BEGIN, to: %d\n", id, next_berth);
+                move(next_berth);
                 return;
             }
             // 在泊位上
-            if (loads == ship_capacity) {
-                // 装满了，走人
-#ifdef DEBUG_SHIP
-                fprintf(stderr, "#SHIP%d: FULL, count down: %d\n", id, count_down);
-#endif
-                go();
-                return;
-            }
+
             // loads < ship_capacity
             int max_obj_num = inf_dist;
             max_obj_num = min(max_obj_num, berth[berth_id].stock);
@@ -736,23 +736,58 @@ public:
             max_obj_num = min(max_obj_num, ship_capacity - loads);
             berth[berth_id].stock -= max_obj_num;
             loads += max_obj_num;
+            berth[berth_id].capacity -= max_obj_num;
+            if (max_obj_num == berth[berth_id].velocity) v_full++;
 
-            if (count_down <= -20) {
+            if (loads == ship_capacity) {
+                // 装满了，走人
+#ifdef DEBUG_SHIP
+                fprintf(stderr, "#SHIP:%d FULL, count down: %d\n", id, count_down);
+#endif
+                go();
+                return;
+            }
+
+//            if (count_down <= -20) {
+//                int next_berth = calc_next_berth();
+//                if (next_berth == berth_id) return;
+//                if (frame + 500 + berth[next_berth].transport_time > 15000) return;
+//                move(next_berth);
+//            }
+            if (berth[berth_id].stock == 0) {
                 int next_berth = calc_next_berth();
                 if (next_berth == berth_id) return;
                 if (frame + 500 + berth[next_berth].transport_time > 15000) return;
-                move(next_berth);
+                if (rand() % 100 < 10) {
+#ifdef DEBUG_SHIP
+                    fprintf(stderr, "#SHIP:%d EARLY LEAVE %d, loads_remain: %d\n", id, berth_id, ship_capacity - loads );
+#endif
+                    move(next_berth); // 平均期望也是20次就走？
+                    return;
+                }
+                if (frame > 10000 && rand() % 100 < 10) {
+#ifdef DEBUG_SHIP
+                    fprintf(stderr, "#SHIP:%d EARLY LEAVE %d, loads_remain: %d\n", id, berth_id, ship_capacity - loads );
+#endif
+                    move(next_berth); // 平均期望也是20次就走？
+                    return;
+                }
             }
         }
     }
 
     int calc_next_berth() {
-        // 普通的以最大的stock来算
+        if (frame <= 5) {
+            for (int i = rand(); ; i = rand()) {
+                fprintf(stderr, "rand: %d\n", i % berth_num);
+                if (berth[i % berth_num].occupy > 0) continue;
+                return i % berth_num;
+            }
+        }
         int max_stock = 0, next_berth_id = berth_id;
         for (int i = 0; i < berth_num; ++i) {
-            if (berth[i].occupy) continue;
-            if (berth[i].stock > max_stock) {
-                max_stock = berth[i].stock;
+            if (berth[i].stock + berth[i].booked - berth[i].capacity > max_stock) {
+                max_stock = berth[i].stock + berth[i].booked - berth[i].capacity;
                 next_berth_id = i;
             }
         }
@@ -839,16 +874,6 @@ void debug_print_dist(int berth_id) {
     fflush(stderr);
 }
 
-//int pd[800][200][200];
-//void calc_pd() {
-//    for (int a = 0; a < 400; ++a) {
-//        for (int bx = 0; bx < 200; ++bx) {
-//            for (int by = 0; by < 200; ++by) {
-//                pd[a][bx][by] = inf_dist;
-//            }
-//        }
-//    }
-//}
 
 void Init() {
     srand((unsigned int)time(NULL));
@@ -969,7 +994,7 @@ void Input(int &frame_id) {
     scanf("%d%d", &frame_id, &money);
     scanf("%d", &k);
 
-//    fprintf(stderr, "#2 Input frame: %d, money: %d, k: %d\n", frame_id, money, k);
+    fprintf(stderr, "#2 Input frame: %d, money: %d, new_obj: %d\n", frame_id, money, k);
     // 新增的货物信息
     int x, y, value;
     for (int i = 0; i < k; ++i) {
@@ -993,6 +1018,17 @@ void Input(int &frame_id) {
     }
     char okk[100];
     scanf("%s", okk);
+}
+
+
+void calc_close_berth(int frame) {
+    for (int i = 0; i < berth_num; ++i) {
+        if (berth[i].closed) continue;
+        if (berth[i].occupy == 0 && berth[i].transport_time + 500 + frame > 15000) {
+            fprintf(stderr, "# BERTH%d close\n", i);
+            berth[i].closed = 1;
+        }
+    }
 }
 
 
@@ -1022,23 +1058,33 @@ int main() {
         if (conflict_error) {
             fprintf(stderr, "-> frame: %d, frame_id: %d\n", frame, frame_id);
         }
+
+#ifdef DEBUG_SHIP
+        fprintf(stderr, "SHIPS: \n");
+        for (int i = 0; i < ship_num; ++i) {
+            fprintf(stderr, "     - %d in %d\n", i, ship[i].berth_id);
+        }
+#endif
+
         for (int i = 0; i < robot_num; ++i) robot[i].act();
         for (int i = 0; i < ship_num; ++i) ship[i].act();
-//        if (frame == 13500) {
+//        if (frame == 12500) {
 //            for (int i = 0; i < 5; ++i) {
-//                ship[i].go();
+//                if (ship[i].loads > ship_capacity * 0.8) ship[i].go();
 //            }
 //        }
+        if (frame > 12000) calc_close_berth(frame);
         printf("OK\n");
         fflush(stdout);
 #ifdef DEBUG_FLAG
         fprintf(stderr, "#4 Output Finish\n");
 #endif
     }
+    fprintf(stderr, "v_full speed: %d\n\n", v_full);
 #ifdef DEBUG_BERTH
     fprintf(stderr, "#TOTAL VALUE %d\n", tot_value);
     for (int i = 0; i < berth_num; ++i) {
-        fprintf(stderr, "#BERTH%d: guess value:%lf, tot value:%d, tot stock %d, remain stock %d\n", i, berth[i].value, berth[i].tot_value, berth[i].tot_stock, berth[i].stock);
+        fprintf(stderr, "#BERTH%d: guess value:%lf, tot value:%d, tot stock %d, remain stock %d, t_time %d\n", i, berth[i].value, berth[i].tot_value, berth[i].tot_stock, berth[i].stock, berth[i].transport_time);
     }
     fprintf(stderr, "\n\n");
     fflush(stderr);
