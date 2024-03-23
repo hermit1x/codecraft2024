@@ -777,12 +777,12 @@ public:
         }
 
         if (_status != status || _id != berth_id) {
-//#ifdef DEBUG_SHIP
+#ifdef DEBUG_SHIP
             fprintf(stderr, "#ERROR Ship %d Sync Faild\n", id);
             fprintf(stderr, "#status: rec %d, get %d\n", status, _status);
             fprintf(stderr, "#berth_id: rec %d, get %d\n", berth_id, _id);
             fprintf(stderr, "#count_down: %d\n", count_down);
-//#endif
+#endif
             status = _status;
             berth_id = _id;
         }
