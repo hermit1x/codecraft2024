@@ -2,5 +2,7 @@
 .idea
 
 MacOSReleasev1.2
+MacOSReleasev2.0
 *.pdf
 *.zip
+*.txt
