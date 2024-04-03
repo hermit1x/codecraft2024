@@ -1,8 +1,11 @@
 .DS_Store
 .idea
 
-MacOSReleasev1.2
-MacOSReleasev2.0
 *.pdf
 *.zip
 *.txt
+
+MacOSReleasev1.2
+MacOSReleasev2.0
+mac
+bin
