@@ -68,9 +68,9 @@ void Init() {
 #endif
 }
 
-void Input(int &frame_id) {
-    int money; // 帧数，金钱
+void Input(int &frame_id, int &money) {
     scanf("%d%d", &frame_id, &money);
+    fprintf(stderr, "[tick] frame_id: %d, money: %d\n", frame_id, money);
     update_obj(frame_id);
     update_robot(frame_id);
     update_ship(frame_id);
@@ -85,25 +85,23 @@ int main() {
     fprintf(stderr, "#0 Program start\n");
 #endif
     Init();
-    int frame_id;
+    int frame_id, money;
     for (int frame = 1; frame <= 15000; frame++) {
 #ifdef DEBUG_FLAG
         fprintf(stderr, "#1 Frame start\n");
 #endif
-        Input(frame_id);
+        Input(frame_id, money);
 #ifdef DEBUG_FLAG
         fprintf(stderr, "#2 Input Finish\n");
         if (frame_id != frame) {
             fprintf(stderr, "# LOOP SYNC ERROR: loop:%d, frame get:%d\n", frame, frame_id);
         }
 #endif
-        if (frame_id == 1) {
-            test_buy_robot();
-            test_buy_ship();
-        }
         if (frame_id != frame) {
             frame = frame_id;
+            fprintf(stderr, "### FRAME SYNC ERROR ###\n");
         }
+
 //        fprintf(stderr, "#3 Think begin\n");
         for (int i = 0; i < robot_num; ++i) robots[i].think();
         for (int i = 0; i < ship_num; ++i) ships[i].think();
@@ -120,6 +118,10 @@ int main() {
         for (int i = 0; i < ship_num; ++i) ships[i].act();
 //        fprintf(stderr, "#7 Ship Act finish\n");
 //        if (frame > 12000) calc_close_berth(frame);
+
+        test_buy_ship(frame, money);
+        test_buy_robot(frame, money);
+
         printf("OK\n");
         fflush(stdout);
 #ifdef DEBUG_FLAG

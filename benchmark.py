@@ -4,10 +4,13 @@ import subprocess
 import numpy as np
 from tqdm import tqdm
 
-os.chdir('./bin')
-os.system('cmake ..')
-os.system('make .')
-os.chdir('../mac')
+# os.chdir('./bin')
+# os.system('cmake ..')
+# os.system('make .')
+# os.chdir('../mac')
+
+os.chdir('./mac')
+
 iters = 1
 
 s1 = []

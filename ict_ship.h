@@ -525,7 +525,8 @@ void update_ship(int frame_id) {
     }
 }
 
-void test_buy_ship() {
+void test_buy_ship(int frame, int money) {
+    if (frame != 1) return;
     for (int i = 0; i < 200; ++i) {
         for (int j = 0; j < 200; ++j) {
             if (is_ship_buy({i, j})) {
