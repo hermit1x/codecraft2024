@@ -10,6 +10,7 @@ const int INF = 0x3f3f3f3f;
 int berth_num;
 int ship_num;
 int robot_num = 0;
+int offload_num;
 
 struct Pos {
     int x, y;
@@ -33,7 +34,7 @@ struct Pos {
 
 using Mov = Pos;
 // 右 左 上 下 不动
-const Mov dir[5] = {{0, 1}, {0, -1}, {-1, 0}, {1, 0}, {0, 0}};
+const Mov mov[5] = {{0, 1}, {0, -1}, {-1, 0}, {1, 0}, {0, 0}};
 
 #define min(x, y) ((x) < (y) ? (x) : (y))
 #define max(x, y) ((x) > (y) ? (x) : (y)

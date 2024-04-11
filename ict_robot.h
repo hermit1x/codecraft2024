@@ -44,7 +44,7 @@ void init_robot_birth() {
 
                     robotBirths.back().poses.push_back(top.p);
                     for (int k = 0; k < 4; ++k) {
-                        Pos next = top.p + dir[k];
+                        Pos next = top.p + mov[k];
                         if (is_legal_bot(next)) {
                             robotBirthPQ.push({next, 0});
                         }
@@ -62,7 +62,7 @@ void init_robot_birth() {
                     if (vis[top.p.x][top.p.y]) continue;
                     vis[top.p.x][top.p.y] = 1;
                     for (int k = 0; k < 4; ++k) {
-                        Pos next = top.p + dir[k];
+                        Pos next = top.p + mov[k];
                         if (is_legal_bot(next) && robotBirths.back().dis[next.x][next.y] > top.d + 1) {
                             robotBirths.back().dis[next.x][next.y] = top.d + 1;
                             robotBirthPQ.push({next, top.d + 1});
@@ -248,10 +248,6 @@ public:
             carry = 1;
         }
         if (act_before_move == ROBOT_PULL) {
-#ifdef DEBUG_BERTH
-            tot_value += dest_obj.value;
-            if (frame > 15000 - berth[dest_berth].transport_time) berth[dest_berth].stock -= 1; // 载不到的就不记了
-#endif
             berths[dest_berth].stocks.push(dest_obj.value);
             berths[dest_berth].stock += 1;
             berths[dest_berth].remain_value += dest_obj.value;
@@ -259,6 +255,7 @@ public:
             berths[dest_berth].tot_value += dest_obj.value;
 
             printf("pull %d\n", id);
+            fprintf(stderr, "[%5d] #ROBOT:%d pull, berth %d, berth_stock %d\n", frame, id, dest_berth, berths[dest_berth].stock);
             carry = 0;
         }
         if (want_moves[assign_move_id].dir != 4) {
@@ -298,7 +295,7 @@ public:
 #endif
             if (!reachable[obj_p.x][obj_p.y]) continue;
 //            if (objs[i].time_appear + 1000 < frame + obj_dis) continue;
-            fprintf(stderr, "obj: (%d,%d) v:%d, d:%d\n", obj_p.x, obj_p.y, obj_v, obj_dis);
+//            fprintf(stderr, "obj: (%d,%d) v:%d, d:%d\n", obj_p.x, obj_p.y, obj_v, obj_dis);
             if (max_value < 1.0 * obj_v / obj_dis) {
                 max_value = 1.0 * obj_v / obj_dis;
                 res = i;
@@ -356,7 +353,7 @@ public:
         if (status == NOTHING) {
             // 没有目标，随便走
             for (int i = 0; i < 5; ++i) {
-                nxt = p + dir[i];
+                nxt = p + mov[i];
                 if (is_legal_bot(nxt)) {
                     want_moves.emplace_back(nxt, i, std::rand());
                 }
@@ -366,7 +363,7 @@ public:
             // 根据dis下降
             if (!vis[p.x][p.y]) calc_path_to_obj();
             for (int i = 0; i < 5; ++i) {
-                nxt = p + dir[i];
+                nxt = p + mov[i];
                 if (is_legal_bot(nxt)) {
 //                    if (!vis[tx][ty]) calc_path_to_obj();
                     want_moves.emplace_back(nxt, i, dis[nxt.x][nxt.y]);
@@ -375,7 +372,7 @@ public:
         }
         if (status == TO_SHIP) {
             for (int i = 0; i < 5; ++i) {
-                nxt = p + dir[i];
+                nxt = p + mov[i];
                 if (is_legal_bot(nxt)) {
                     want_moves.emplace_back(nxt, i, mat[nxt.x][nxt.y].land_dist[dest_berth]);
                 }
@@ -428,7 +425,7 @@ public:
             int rand_base = rand() % 4;
             for (int i, j = 0; j < 4; ++j) {
                 i = (rand_base + j) % 4;
-                nxt = top.p + dir[i];
+                nxt = top.p + mov[i];
 
                 if (is_legal_bot(nxt)) {
                     if (top.d < dis[nxt.x][nxt.y]) {
@@ -494,7 +491,9 @@ public:
 
             std::vector<BerthInfo> berth_vec;
             for (int i = 0; i < berth_num; ++i) {
-                if (is_reachable(p, i) && l_future[i] - l_wokers[i] > 0.15) {
+                if (
+                        mat[p.x][p.y].land_dist[i] != INF // is_reachable(px,py)
+                        && l_future[i] - l_wokers[i] > 0.15) {
                     berth_vec.push_back(BerthInfo(i, l_future[i] - l_wokers[i], mat[p.x][p.y].land_dist[i]));
                 }
             }
@@ -575,8 +574,8 @@ bool conflict_dfs(int vec_id, int rpp) {
     for (int i = 0; i < moves_len; ++i) {
         // 检查conflict
         tp = robots[robot_id].want_moves[i].p;
-        if (conflict_mat_robot[tp.x][tp.y][1] != -1) continue;
-        if (conflict_mat_robot[tp.x][tp.y][0] != -1 && conflict_mat_robot[tp.x][tp.y][0] == conflict_mat_robot[robots[robot_id].p.x][robots[robot_id].p.y][1]) {
+        if (!is_land_main(tp) && conflict_mat_robot[tp.x][tp.y][1] != -1) continue;
+        if (!is_land_main(tp) && !is_land_main(robots[robot_id].p) && conflict_mat_robot[tp.x][tp.y][0] != -1 && conflict_mat_robot[tp.x][tp.y][0] == conflict_mat_robot[robots[robot_id].p.x][robots[robot_id].p.y][1]) {
             // 这一句表示对方从 tp 到我们这个位置上来
             // 我们默认是要去tp的位置
             continue;
@@ -676,9 +675,13 @@ void update_robot(int frame_id) {
 }
 
 void test_buy_robot() {
-    for (auto i : robotBirths) {
-        printf("lbot %d %d\n", i.poses[0].x, i.poses[0].y);
-        robots.push_back(Robot(i.poses[0].x, i.poses[0].y, robot_num++, 0, 0));
+    int cnt = 0;
+    while (cnt < 8) {
+        for (auto i : robotBirths) {
+            printf("lbot %d %d\n", i.poses[0].x, i.poses[0].y);
+            fprintf(stderr, "buy bot:%d (%d,%d)\n", cnt++, i.poses[0].x, i.poses[0].y);
+            robots.push_back(Robot(i.poses[0].x, i.poses[0].y, robot_num++, 0, 0));
+        }
     }
 }
 

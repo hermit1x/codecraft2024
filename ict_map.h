@@ -38,15 +38,14 @@ using map_type = int;
 #define MAP_MULTILEVEL_MAIN 0b00011011
 #define MAP_BERTH           0b01011011
 #define MAP_ANCHORAGE       0b10011000
-#define MAP_OFFLOAD        0b100000000
+#define MAP_OFFLOAD        0b100011000
 
 class Mat {
 public:
     map_type type;
 
     bool has_obj;
-    std::vector<int> sea_dist, land_dist;
-    int dis2offload;
+    std::vector<int> land_dist;
 } mat[207][207];
 
 #define macro_dis_man(x1, y1, x2, y2) (abs(x1 - x2) + abs(y1 - y2))

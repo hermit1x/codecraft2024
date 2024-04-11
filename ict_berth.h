@@ -58,6 +58,8 @@ void init_berth() {
      * 存在mat[x][y].dist[berth_id]里
      * 可以在机器人建起物品后快速判断去哪个泊位
      * 同时也用于去向泊位的过程中选择路径
+     *
+     * update: 只算陆地的，海的另算
      * */
         // 给每个泊位初始化距离
         int dis[201][201], vis[201][201];
@@ -78,7 +80,7 @@ void init_berth() {
 
             berths.back().poses.push_back(cur.p);
             for (int j = 0; j < 4; ++j) {
-                Pos nxt = cur.p + dir[j];
+                Pos nxt = cur.p + mov[j];
                 if (in_mat(nxt) && is_berth(nxt)) {
                     berthPQ.push({nxt, 0});
                 }
@@ -90,47 +92,6 @@ void init_berth() {
             vis[p.x][p.y] = 0;
             berthPQ.push({p, 0});
         }
-        while (!berthPQ.empty()) {
-            auto cur = berthPQ.top();
-            berthPQ.pop();
-            if (vis[cur.p.x][cur.p.y]) continue;
-            vis[cur.p.x][cur.p.y] = 1;
-            for (int j = 0; j < 4; ++j) {
-                Pos nxt = cur.p + dir[j];
-//                if (in_mat(nxt) && is_land(nxt) && dis[nxt.x][nxt.y] > dis[cur.p.x][cur.p.y] + 1) {
-//                    dis[nxt.x][nxt.y] = dis[cur.p.x][cur.p.y] + 1;
-//                    berthPQ.push({nxt, dis[nxt.x][nxt.y]});
-//                }
-                if (is_legal_ship(nxt) && !vis[nxt.x][nxt.y]) {
-                    if (is_sea_main(nxt)) {
-                        if (dis[nxt.x][nxt.y] > dis[cur.p.x][cur.p.y] + 2) {
-                            dis[nxt.x][nxt.y] = dis[cur.p.x][cur.p.y] + 2;
-                            berthPQ.push({nxt, dis[nxt.x][nxt.y]});
-                        }
-                    }
-                    else {
-                        if (dis[nxt.x][nxt.y] > dis[cur.p.x][cur.p.y] + 1) {
-                            dis[nxt.x][nxt.y] = dis[cur.p.x][cur.p.y] + 1;
-                            berthPQ.push({nxt, dis[nxt.x][nxt.y]});
-                        }
-                    }
-                }
-            }
-        }
-
-        for (int ii = 0; ii < 200; ++ii) {
-            for (int jj = 0; jj < 200; ++jj) {
-                mat[ii][jj].sea_dist.push_back(dis[ii][jj]);
-            }
-        }
-
-        // 再算陆地的
-        for (int k = 0; k < 201; ++k) {
-            for (int j = 0; j < 201; ++j) {
-                dis[k][j] = INF;
-                vis[k][j] = 0;
-            }
-        }
 
         for (auto p : berths[i].poses) {
             dis[p.x][p.y] = 0;
@@ -143,21 +104,21 @@ void init_berth() {
             if (vis[cur.p.x][cur.p.y]) continue;
             vis[cur.p.x][cur.p.y] = 1;
             for (int j = 0; j < 4; ++j) {
-                Pos nxt = cur.p + dir[j];
+                Pos nxt = cur.p + mov[j];
 //                if (in_mat(nxt) && is_land(nxt) && dis[nxt.x][nxt.y] > dis[cur.p.x][cur.p.y] + 1) {
 //                    dis[nxt.x][nxt.y] = dis[cur.p.x][cur.p.y] + 1;
 //                    berthPQ.push({nxt, dis[nxt.x][nxt.y]});
 //                }
                 if (is_legal_bot(nxt) && !vis[nxt.x][nxt.y]) {
                     if (is_land_main(nxt)) {
-                        if (dis[nxt.x][nxt.y] > dis[cur.p.x][cur.p.y] + 2) {
-                            dis[nxt.x][nxt.y] = dis[cur.p.x][cur.p.y] + 2;
+                        if (dis[nxt.x][nxt.y] > dis[cur.p.x][cur.p.y] + 1) {
+                            dis[nxt.x][nxt.y] = dis[cur.p.x][cur.p.y] + 1;
                             berthPQ.push({nxt, dis[nxt.x][nxt.y]});
                         }
                     }
                     else {
-                        if (dis[nxt.x][nxt.y] > dis[cur.p.x][cur.p.y] + 1) {
-                            dis[nxt.x][nxt.y] = dis[cur.p.x][cur.p.y] + 1;
+                        if (dis[nxt.x][nxt.y] > dis[cur.p.x][cur.p.y] + 2) {
+                            dis[nxt.x][nxt.y] = dis[cur.p.x][cur.p.y] + 2;
                             berthPQ.push({nxt, dis[nxt.x][nxt.y]});
                         }
                     }
@@ -172,14 +133,6 @@ void init_berth() {
         }
     }
 #ifdef DEBUG_FLAG
-    fprintf(stderr, "# Berth Init Finish\n");
-
-    for (int i = 0; i < 200; ++i) {
-        for (int j = 0; j < 200; ++j) {
-            fprintf(stderr, "%4d", mat[i][j].sea_dist[0] == INF ? 0 : mat[i][j].sea_dist[0]);
-        }
-        fprintf(stderr, "\n");
-    }
     fprintf(stderr, "# LAND\n");
     for (int i = 0; i < 200; ++i) {
         for (int j = 0; j < 200; ++j) {
@@ -190,62 +143,46 @@ void init_berth() {
 #endif
 }
 
-bool is_reachable(Pos p, int berth_id) {
-    return mat[p.x][p.y].sea_dist[berth_id] != INF;
-}
+class Offload {
+public:
+    std::vector<Pos> poses;
+};
+std::vector<Offload> offloads;
 
 void init_offload() {
-    // 给每个泊位初始化距离
-    int dis[201][201], vis[201][201];
-    for (int k = 0; k < 201; ++k) {
-        for (int j = 0; j < 201; ++j) {
-            dis[k][j] = INF;
-            vis[k][j] = 0;
-        }
-    }
-
-    // 一个退化成bfs的dijkstra，先统计一个港口有多少土地
+    int calced[200][200];
     for (int i = 0; i < 200; ++i) {
         for (int j = 0; j < 200; ++j) {
-            if (is_offload({i, j})) {
-                berthPQ.push({Pos(i, j), 0});
-            }
+            calced[i][j] = 0;
         }
     }
-    while (!berthPQ.empty()) {
-        auto cur = berthPQ.top();
-        berthPQ.pop();
-        if (vis[cur.p.x][cur.p.y]) continue;
-        vis[cur.p.x][cur.p.y] = 1;
-        dis[cur.p.x][cur.p.y] = cur.d;
+    for (int i = 0; i < 200; ++i) {
+        for (int j = 0; j < 200; ++j) {
+            if (calced[i][j]) continue; // 这个集合被算过了
+            if (!is_offload(Pos(i, j))) continue;
+            offloads.push_back(Offload());
 
-        for (int j = 0; j < 4; ++j) {
-            Pos nxt = cur.p + dir[j];
-            if (in_mat(nxt) && !vis[nxt.x][nxt.y] && is_legal_ship(nxt)) {
-                if (is_sea_main(nxt)) {
-                    if (dis[nxt.x][nxt.y] > dis[cur.p.x][cur.p.y] + 6) {
-                        dis[nxt.x][nxt.y] = dis[cur.p.x][cur.p.y] + 6;
-                        berthPQ.push({nxt, dis[nxt.x][nxt.y]});
-                    }
-                }
-                else {
-                    if (dis[nxt.x][nxt.y] > dis[cur.p.x][cur.p.y] + 3) {
-                        dis[nxt.x][nxt.y] = dis[cur.p.x][cur.p.y] + 3;
-                        berthPQ.push({nxt, dis[nxt.x][nxt.y]});
+            // 一个退化成bfs的dijkstra，先统计一个港口有多少土地
+            berthPQ.push({ Pos(i, j), 0});
+            while (!berthPQ.empty()) {
+                auto cur = berthPQ.top();
+                berthPQ.pop();
+                if (calced[cur.p.x][cur.p.y]) continue;
+                calced[cur.p.x][cur.p.y] = 1;
+
+                offloads.back().poses.push_back(cur.p);
+                for (int k = 0; k < 4; ++k) {
+                    Pos nxt = cur.p + mov[k];
+                    if (in_mat(nxt) && is_offload(nxt)) {
+                        berthPQ.push({nxt, 0});
                     }
                 }
             }
         }
     }
-
-    for (int ii = 0; ii < 200; ++ii) {
-        for (int jj = 0; jj < 200; ++jj) {
-            mat[ii][jj].dis2offload = dis[ii][jj];
-        }
-    }
-#ifdef DEBUG_FLAG
-    fprintf(stderr, "# Offload Init Finish\n");
-#endif
+    offload_num = (int)offloads.size();
+    fprintf(stderr, "[INIT] Offload inited, num: %d\n", offload_num);
 }
+
 
 #endif //CODECRAFT2024_ICT_BERTH_H

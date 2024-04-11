@@ -5,7 +5,7 @@
 #include <memory>
 #include <time.h>
 
-#define DEBUG_FLAG
+//#define DEBUG_FLAG
 //#define DEBUG_ROBOT
 //#define DEBUG_ROBOT_SCHEDULE
 //#define DEBUG_SHIP
@@ -32,6 +32,7 @@ void Init() {
     fprintf(stderr, "ship_capacity inited\n");
     char okk[100];
     scanf("%s", okk);
+    init_sea_map();
 
 //    debug_print_dist(0);
 
@@ -70,13 +71,9 @@ void Init() {
 void Input(int &frame_id) {
     int money; // 帧数，金钱
     scanf("%d%d", &frame_id, &money);
-    fprintf(stderr, "  input1\n");
     update_obj(frame_id);
-    fprintf(stderr, "  input2\n");
     update_robot(frame_id);
-    fprintf(stderr, "  input3\n");
     update_ship(frame_id);
-    fprintf(stderr, "  input4\n");
     char okk[100];
     scanf("%s", okk);
 }
@@ -101,29 +98,28 @@ int main() {
         }
 #endif
         if (frame_id == 1) {
-//            test_buy_robot();
+            test_buy_robot();
             test_buy_ship();
         }
         if (frame_id != frame) {
             frame = frame_id;
         }
-        fprintf(stderr, "#3 Think begin\n");
+//        fprintf(stderr, "#3 Think begin\n");
         for (int i = 0; i < robot_num; ++i) robots[i].think();
         for (int i = 0; i < ship_num; ++i) ships[i].think();
-        fprintf(stderr, "#4 Think finish\n");
+//        fprintf(stderr, "#4 Think finish\n");
         handle_conflict_robot();
         handle_conflict_ship();
-        fprintf(stderr, "#5 Conflict finish\n");
+//        fprintf(stderr, "#5 Conflict finish\n");
         if (conflict_error_robot || conflict_error_ship) {
             fprintf(stderr, "-> frame: %d, frame_id: %d\n", frame, frame_id);
         }
 
         for (int i = 0; i < robot_num; ++i) robots[i].act();
-        fprintf(stderr, "#6 Robot Act finish\n");
+//        fprintf(stderr, "#6 Robot Act finish\n");
         for (int i = 0; i < ship_num; ++i) ships[i].act();
-        fprintf(stderr, "#7 Ship Act finish\n");
+//        fprintf(stderr, "#7 Ship Act finish\n");
 //        if (frame > 12000) calc_close_berth(frame);
-        if (frame <= 16 && (frame & 1)) test_buy_robot();
         printf("OK\n");
         fflush(stdout);
 #ifdef DEBUG_FLAG
@@ -133,10 +129,12 @@ int main() {
 //    fprintf(stderr, "v_full speed: %d\n\n", v_full);
 //#ifdef DEBUG_BERTH
     fprintf(stderr, "#TOTAL VALUE %d\n", tot_value);
+    int sum_remain_value = 0;
     for (int i = 0; i < berth_num; ++i) {
         fprintf(stderr, "#BERTH%d: remain value:%d, tot value:%d, tot stock %d, remain stock %d\n", i, berths[i].remain_value, berths[i].tot_value, berths[i].tot_stock, berths[i].stock);
+        sum_remain_value += berths[i].remain_value;
     }
-    fprintf(stderr, "\n\n");
+    fprintf(stderr, "sum remain_value:%d\n\n", sum_remain_value);
     fflush(stderr);
 //#endif
     return 0;
