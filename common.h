@@ -17,6 +17,7 @@ struct Pos {
 
     Pos() : x(0), y(0) {}
     Pos(int _x, int _y): x(_x), y(_y) {}
+    Pos(const Pos &rhs) : x(rhs.x), y(rhs.y) {}
 
     Pos operator + (const Pos &rhs) const {
         return {x + rhs.x, y + rhs.y};

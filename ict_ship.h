@@ -474,10 +474,10 @@ public:
 
     int calc_next_berth() {
         // TODO: 继续优化这里的算法
-        int mx_stock = 0, dest_berth = rand() % berth_num;
+        double mx_value = 0, dest_berth = rand() % berth_num;
         for (int i = 0; i < berth_num; ++i) {
-            if (mx_stock < berths[i].stock) {
-                mx_stock = berths[i].stock;
+            if (mx_value < 1.0 * berths[i].stock / berthmaps[i].getdis(pd)) {
+                mx_value = 1.0 * berths[i].stock / berthmaps[i].getdis(pd);
                 dest_berth = i;
             }
         }

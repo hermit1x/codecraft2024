@@ -36,6 +36,9 @@ struct berthPQnode {
     Pos p;
     int d;
 
+    berthPQnode() {}
+    berthPQnode(Pos _x, int _d) : p(_x), d(_d) { }
+
     bool operator<(const berthPQnode &rhs) const {
         return d > rhs.d;
     }

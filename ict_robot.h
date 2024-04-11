@@ -35,7 +35,7 @@ void init_robot_birth() {
             if (mat[i][j].type == MAP_ROBOT_BUY && !vis[i][j]) {
                 robotBirths.emplace_back(RobotBirth());
 
-                robotBirthPQ.push({Pos(i, j), 0});
+                robotBirthPQ.push(berthPQnode(Pos(i, j), 0));
                 while (!robotBirthPQ.empty()) {
                     robotBirthPQnode top = robotBirthPQ.top();
                     robotBirthPQ.pop();
@@ -46,7 +46,7 @@ void init_robot_birth() {
                     for (int k = 0; k < 4; ++k) {
                         Pos next = top.p + mov[k];
                         if (is_legal_bot(next)) {
-                            robotBirthPQ.push({next, 0});
+                            robotBirthPQ.push(berthPQnode(next, 0));
                         }
                     }
                 }
@@ -54,7 +54,7 @@ void init_robot_birth() {
                 for (auto p : robotBirths.back().poses) {
                     robotBirths.back().dis[p.x][p.y] = 0;
                     vis[p.x][p.y] = 0;
-                    robotBirthPQ.push({p, 0});
+                    robotBirthPQ.push(berthPQnode(p, 0));
                 }
                 while (!robotBirthPQ.empty()) {
                     robotBirthPQnode top = robotBirthPQ.top();
@@ -65,7 +65,7 @@ void init_robot_birth() {
                         Pos next = top.p + mov[k];
                         if (is_legal_bot(next) && robotBirths.back().dis[next.x][next.y] > top.d + 1) {
                             robotBirths.back().dis[next.x][next.y] = top.d + 1;
-                            robotBirthPQ.push({next, top.d + 1});
+                            robotBirthPQ.push(berthPQnode(next, top.d + 1));
                         }
                     }
                 }
