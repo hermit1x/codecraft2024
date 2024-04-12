@@ -7,8 +7,11 @@
 
 const int INF = 0x3f3f3f3f;
 
-int berth_num;
-int ship_num;
+int want_robot_num = 12;
+int want_ship_num = 1;
+
+int berth_num = 0;
+int ship_num = 0;
 int robot_num = 0;
 int offload_num;
 

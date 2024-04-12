@@ -19,7 +19,7 @@ mutex = threading.Lock()
 
 def fun(i):
     result = subprocess.run(
-        [f'./SemiFinalJudge ../bin/main -m ./maps/map{i}.txt -l NONE'],
+        [f'./SemiFinalJudge ../bin/main -m ./maps/map{i}.txt -l NONE 2> /dev/null'],
         shell=True,
         capture_output=True
     )

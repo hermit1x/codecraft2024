@@ -674,10 +674,9 @@ void update_robot(int frame_id) {
     }
 }
 
-void test_buy_robot(int frame, int money) {
-    if (frame == 1) return;
+void test_buy_robot(int frame, int &money) {
     static int cnt = 0;
-    while (cnt < 12) {
+    while (cnt < want_robot_num) {
         for (auto i : robotBirths) {
             if (money < 2000) break;
             printf("lbot %d %d\n", i.poses[0].x, i.poses[0].y);

@@ -77,10 +77,13 @@ void Input(int &frame_id, int &money) {
     scanf("%d%d", &frame_id, &money);
     fprintf(stderr, "[tick] frame_id: %d, money: %d\n", frame_id, money);
     update_obj(frame_id);
+    fprintf(stderr, "obj updated, ");
     clock_t t0 = clock();
     update_robot(frame_id);
+    fprintf(stderr, "robot updated, ");
     clock_t t1 = clock();
     update_ship(frame_id);
+    fprintf(stderr, "ship updated \n");
     clock_t t2 = clock();
     t_r_in += my_difftime(t1, t0);
     t_s_in += my_difftime(t2, t1);
@@ -122,9 +125,12 @@ int main() {
         clock_t t0 = clock();
         for (int i = 0; i < robot_num; ++i) robots[i].think();
         handle_conflict_robot();
+        fprintf(stderr, "robot think finish\n");
         clock_t t1 = clock();
         for (int i = 0; i < ship_num; ++i) ships[i].think();
+        fprintf(stderr, "ship think finish\n");
         handle_conflict_ship();
+        fprintf(stderr, "ship conflict finish\n");
         clock_t t2 = clock();
 
         t_r_think += my_difftime(t1, t0);
