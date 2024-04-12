@@ -36,7 +36,7 @@ using map_type = int;
 #define MAP_SHIP_BUY        0b00111000
 #define MAP_MULTILEVEL      0b00001001
 #define MAP_MULTILEVEL_MAIN 0b00011011
-#define MAP_BERTH           0b01011011
+#define MAP_BERTH           0b11011011
 #define MAP_ANCHORAGE       0b10011000
 #define MAP_OFFLOAD        0b100011000
 

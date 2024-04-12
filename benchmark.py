@@ -3,6 +3,7 @@ import json
 import subprocess
 import numpy as np
 from tqdm import tqdm
+import threading
 
 # os.chdir('./bin')
 # os.system('cmake ..')
@@ -11,46 +12,47 @@ from tqdm import tqdm
 
 os.chdir('./mac')
 
-iters = 1
+iters = 10
 
-s1 = []
-for i in tqdm(range(iters), desc="Map1"):
-    result = subprocess.run(
-                ['./SemiFinalJudge ../bin/main -m ./maps/map1.txt -l NONE'],
-                shell=True, 
-                capture_output=True
-            )
-    res = result.stdout.decode()
-    score = json.loads(res)['score']
-    s1.append(score)
+s = [[], [], [], []]
+mutex = threading.Lock()
 
-s2 = []
-for i in tqdm(range(iters), desc="Map2"):
+def fun(i):
     result = subprocess.run(
-                ['./SemiFinalJudge ../bin/main -m ./maps/map2.txt -l NONE'],
-                shell=True, 
-                capture_output=True
-            )
-    res = result.stdout.decode()
-    score = json.loads(res)['score']
-    s2.append(score)
-
-s3 = []
-for i in tqdm(range(iters), desc="Map3"):
-    result = subprocess.run(
-        ['./SemiFinalJudge ../bin/main -m ./maps/map3.txt -l NONE'],
+        [f'./SemiFinalJudge ../bin/main -m ./maps/map{i}.txt -l NONE'],
         shell=True,
         capture_output=True
     )
     res = result.stdout.decode()
     score = json.loads(res)['score']
-    s3.append(score)
+    mutex.acquire()
+    s[i].append(score)
+    mutex.release()
 
-s1 = np.array(s1)
-s2 = np.array(s2)
-s3 = np.array(s3)
+for i in tqdm(range(iters//2), desc="iter"):
+    t1 = threading.Thread(target=fun, args=[1])
+    t1.start()
+    t2 = threading.Thread(target=fun, args=[2])
+    t2.start()
+    t3 = threading.Thread(target=fun, args=[3])
+    t3.start()
+    t4 = threading.Thread(target=fun, args=[1])
+    t4.start()
+    t5 = threading.Thread(target=fun, args=[2])
+    t5.start()
+    t6 = threading.Thread(target=fun, args=[3])
+    t6.start()
 
-print("map1: ave:", s1.mean(), "max:", s1.max())
-print("map2: ave:", s2.mean(), "max:", s2.max())
-print("map3: ave:", s3.mean(), "max:", s3.max())
-print(f'sum: {s1.mean() + s2.mean() + s3.mean()}')
+    t1.join()
+    t2.join()
+    t3.join()
+    t4.join()
+    t5.join()
+    t6.join()
+
+
+for i in range(1, 4):
+    s[i] = np.array(s[i])
+    print(f"map{i}: ave:{s[i].mean()} max:{s[i].max()} min:{s[i].min()}")
+
+print(f'sum: {s[1].mean() + s[2].mean() + s[3].mean()}')

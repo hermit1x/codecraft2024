@@ -256,7 +256,7 @@ class Ship {
 
     BerthMap *seamap;
 public:
-    Ship(int x, int y) : pd(Pos(x, y), 0), status(SHIP_AWAIT), dest_berth(-1), frame(1) {};
+    Ship(int x, int y) : pd(Pos(x, y), 0), status(SHIP_AWAIT), dest_berth(-1), dest_offloads(-1), frame(1) {};
 
     void sync(int _frame, int _id, int _loads, Pos _p, int _dir, int _status) {
         frame++;
@@ -340,6 +340,7 @@ public:
 
     struct ShipActNode {
         ship_cmds act;
+        PosDir pd;
         int value;
         bool operator < (const ShipActNode &rhs) const {
             return value < rhs.value;
@@ -350,29 +351,32 @@ public:
     void assign_act(int x) { assign_act_id = x; }
     void think() {
         want_acts.clear();
-//        fprintf(stderr, "[%5d] [ship:%d] THINK BEGIN, status: %s\n", frame, id, status_strs[status]);
+
         if (recovering) {
-            want_acts.push_back({SHIP_CMD_NOTHING, 0});
+            want_acts.push_back({SHIP_CMD_NOTHING,PosDir(),0});
             recovering = false;
             return;
         }
 
         // TODO: 临终测量还得改
         if (frame >= 14500 && status != SHIP_TO_OFFLOAD) {
-            if (is_berth(pd.pos)) want_acts.push_back({SHIP_CMD_DEPT, 0});
-            else want_acts.push_back({SHIP_CMD_NOTHING, 0});
+            if (is_berth(pd.pos)) want_acts.push_back({SHIP_CMD_DEPT, PosDir(), 0});
+            else want_acts.push_back({SHIP_CMD_NOTHING, PosDir(), 0});
             status = SHIP_TO_OFFLOAD;
             dest_berth = -1;
             return;
         }
 
+        fprintf(stderr, "[%5d] [ship:%d] status: %s, to_berth:%d, to_offlaod:%d\n", frame, id, status_strs[status], dest_berth, dest_offloads);
         if (status == SHIP_AWAIT) {
             dest_berth = calc_next_berth();
             calc_path_to_berth();
             status = SHIP_TO_BERHT;
         }
         if (status == SHIP_TO_BERHT) {
-            if (seamap->dis[pd.pos.x][pd.pos.y][pd.dir] < 20 && is_anchorage(pd.pos)) {
+            fprintf(stderr, "[%5d] ship:%d TO_BERTH, pos: (%d,%d), berth:%d, dis:%d, is_anchorage:%d\n", frame, id, pd.pos.x, pd.pos.y, dest_berth, seamap->getdis(pd),
+                    is_anchorage(pd.pos));
+            if (seamap->getdis(pd) < 20 && is_anchorage(pd.pos)) {
                 status = SHIP_IN_ANCHORAGE;
             }
             else {
@@ -381,33 +385,39 @@ public:
             }
         }
         if (status == SHIP_IN_ANCHORAGE) {
-            want_acts.push_back({SHIP_CMD_BERTH, 0});
+            want_acts.push_back({SHIP_CMD_BERTH, PosDir(), 0});
             return;
         }
         if (status == SHIP_IN_BERTH) {
-            // 先执行船舶指令，后进行装载
+            // 先执行船舶指令，后进行装载F
             // 装完回卸货点 dest_berth = -1;
             if (loads == ship_capacity) {
-                want_acts.push_back({SHIP_CMD_DEPT, 0});
+                want_acts.push_back({SHIP_CMD_DEPT, PosDir(), 0});
                 status = SHIP_TO_OFFLOAD;
                 dest_berth = -1;
-//                fprintf(stderr, "[%5d] ship:%d IN_BERTH, berth:%d, load_full\n", frame, id, dest_berth);
+                fprintf(stderr, "[%5d] ship:%d IN_BERTH, berth:%d, load_full\n", frame, id, dest_berth);
                 return;
             }
             fprintf(stderr, "[%5d] ship:%d IN_BERTH, berth:%d, stock:%d, loads:%d\n", frame, id, dest_berth, berths[dest_berth].stock, loads);
             if (berths[dest_berth].stock == 0) {
                 if (rand() % 100 < 20) {
-                    want_acts.push_back({SHIP_CMD_DEPT, 0});
+                    want_acts.push_back({SHIP_CMD_DEPT, PosDir(), 0});
                     status = SHIP_AWAIT;
+                    fprintf(stderr, "[%5d] ship:%d IN_BERTH, berth:%d, empty DEPT\n", frame, id, dest_berth);
                     return;
                 }
             }
             // 不走，继续装
-            want_acts.push_back({SHIP_CMD_NOTHING, 0});
+            want_acts.push_back({SHIP_CMD_NOTHING, PosDir(), 0});
             int max2load = min(berths[dest_berth].stock, ship_capacity - loads);
             max2load = min(max2load, berths[dest_berth].velocity);
             loads += max2load;
-            fprintf(stderr, "- load add: %d\n", max2load);
+            fprintf(stderr, "- load add:%d\n", max2load);
+
+            if (berths[dest_berth].stocks.size() != berths[dest_berth].stock) {
+                fprintf(stderr, "### STOCK_NOT_MATCH ERROR ###\n");
+            }
+
             for (int i = 0; i < max2load; ++i) {
                 berths[dest_berth].remain_value -= berths[dest_berth].stocks.front();
                 berths[dest_berth].stocks.pop();
@@ -418,7 +428,8 @@ public:
         if (status == SHIP_TO_OFFLOAD) {
             if (dest_berth == -1) {
                 dest_berth = -2;
-                calc_best_offload();
+                dest_offloads = calc_best_offload();
+                fprintf(stderr, "[%5d] ship:%d TO_OFFLOAD, offload:%d\n", frame, id, dest_offloads);
                 calc_path_to_offload();
             }
             if (dest_berth == -2 && is_offload(pd.pos)) {
@@ -431,7 +442,7 @@ public:
     }
 
     void act() {
-//        fprintf(stderr, "[%5d] ship:%d ACT: %s\n", frame, id, cmd_strs[want_acts[assign_act_id].act]);
+        fprintf(stderr, "[%5d] ship:%d FINAL_ACT: %s\n", frame, id, cmd_strs[want_acts[assign_act_id].act]);
         switch (want_acts[assign_act_id].act) {
             case SHIP_CMD_DEPT:
                 dept();
@@ -456,19 +467,18 @@ public:
 
     void calc_acts() {
         PosDir nxt;
+        int cur_dis = seamap->getdis(pd);
         nxt = pd.next_rot0();
-        if (nxt.is_legal()) want_acts.push_back({SHIP_CMD_ROT0, seamap->getdis(nxt)});
+        if (nxt.is_legal() && seamap->getdis(nxt) <= cur_dis) want_acts.push_back({SHIP_CMD_ROT0, nxt, seamap->getdis(nxt)});
         nxt = pd.next_rot1();
-        if (nxt.is_legal()) want_acts.push_back({SHIP_CMD_ROT1, seamap->getdis(nxt)});
+        if (nxt.is_legal() && seamap->getdis(nxt) <= cur_dis) want_acts.push_back({SHIP_CMD_ROT1, nxt, seamap->getdis(nxt)});
         nxt = pd.next_ship();
-        if (nxt.is_legal()) want_acts.push_back({SHIP_CMD_SHIP, seamap->getdis(nxt)});
+        if (nxt.is_legal() && seamap->getdis(nxt) <= cur_dis) want_acts.push_back({SHIP_CMD_SHIP, nxt, seamap->getdis(nxt)});
+        want_acts.push_back({SHIP_CMD_NOTHING, pd, cur_dis});
+        std::sort(want_acts.begin(), want_acts.end());
 
-        if (want_acts.empty()) {
-            fprintf(stderr, "#SHIP:%d CALC_ACT ERROR\n", id);
-            want_acts.push_back({SHIP_CMD_NOTHING, 0});
-        }
-        else {
-            std::sort(want_acts.begin(), want_acts.end());
+        for (auto &x : want_acts) {
+            fprintf(stderr, "[     ] ship:%d ACT: %s, dis:%d\n", id, cmd_strs[x.act], x.value);
         }
     }
 
@@ -505,12 +515,67 @@ public:
 };
 std::vector<Ship> ships;
 
-bool conflict_error_ship = false;
-void handle_conflict_ship() {
-    // TODO:
-    for (int i = 0; i < ship_num; ++i) {
-        ships[i].assign_act(0);
+int ship_conflict_mat[200][200];
+
+bool ship_conflict_legal(const PosDir &pd) {
+    for (int i = 0; i < 6; ++i) {
+        Pos p = pd.pos + ship_dir_mapping[pd.dir][i];
+        if (ship_conflict_mat[p.x][p.y]) return false;
     }
+    return true;
+}
+
+void ship_conflict_occupy(const PosDir &pd) {
+    for (int i = 0; i < 6; ++i) {
+        Pos p = pd.pos + ship_dir_mapping[pd.dir][i];
+        ship_conflict_mat[p.x][p.y] = 1;
+    }
+}
+
+void ship_conflict_dfs(int ship_id) {
+    if (ship_id == ship_num) return;
+    if (ships[ship_id].want_acts.size() == 1) {
+        ships[ship_id].assign_act(0);
+        ship_conflict_dfs(ship_id + 1);
+        return;
+    }
+    for (int i = 0; i < ships[ship_id].want_acts.size(); ++i) {
+        ships[ship_id].assign_act(i);
+        if (ship_conflict_legal(ships[ship_id].want_acts[i].pd)) {
+            // 有合法的就直接走，不管后面的死活
+            ship_conflict_occupy(ships[ship_id].want_acts[i].pd);
+            ship_conflict_dfs(ship_id + 1);
+            return;
+        }
+    }
+    // 如果包括 NOTHING 在内都没有合法的，那就 BERTH 重置了
+    ships[ship_id].assign_act( ships[ship_id].want_acts.size() );
+    ships[ship_id].want_acts.push_back( {SHIP_CMD_DEPT, PosDir(), 0} );
+    ship_conflict_dfs(ship_id + 1);
+    fprintf(stderr, "[conflict] SHIP:%d FORCE DEPT\n", ship_id);
+    return;
+    /*
+     * 这套逻辑不一定是最佳的，但可以解决
+     * 1. 两个船对顶着，都NOTHING，合法但不对
+     * 2. 两个船相互让位，比如都一起rotate，合法但不对
+     *
+     * 可能的改进方向：
+     * 统计所有合法的可能，然后选全局最优？
+     */
+}
+
+void handle_conflict_ship() {
+//    for (int i = 0; i < ship_num; ++i) {
+//        ships[i].assign_act(0);
+//    }
+//    return;
+    for (int i = 0; i < 200; ++i) {
+        for (int j = 0; j < 200; ++j) {
+            ship_conflict_mat[i][j] = 0;
+        }
+    }
+
+    ship_conflict_dfs(0);
 }
 
 void update_ship(int frame_id) {

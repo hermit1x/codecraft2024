@@ -15,7 +15,7 @@
 class Berth {
 public:
     Berth() {}
-    Berth(int id, int x, int y, int velocity) : id(id), loc({x, y}), velocity(velocity) {
+    Berth(int id, int x, int y, int velocity) : id(id), loc({x, y}), velocity(velocity), stock(0) {
         closed = false;
     }
 

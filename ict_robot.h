@@ -255,7 +255,7 @@ public:
             berths[dest_berth].tot_value += dest_obj.value;
 
             printf("pull %d\n", id);
-            fprintf(stderr, "[%5d] #ROBOT:%d pull, berth %d, berth_stock %d\n", frame, id, dest_berth, berths[dest_berth].stock);
+            fprintf(stderr, "[%5d] #ROBOT:%d pull, berth:%d, berth_stock:%d, que.size:%lu\n", frame, id, dest_berth, berths[dest_berth].stock, berths[dest_berth].stocks.size());
             carry = 0;
         }
         if (want_moves[assign_move_id].dir != 4) {
