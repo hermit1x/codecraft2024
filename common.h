@@ -7,8 +7,8 @@
 
 const int INF = 0x3f3f3f3f;
 
-int want_robot_num = 12;
-int want_ship_num = 1;
+int want_robot_num = 18;
+int want_ship_num = 2;
 
 int berth_num = 0;
 int ship_num = 0;
@@ -41,6 +41,6 @@ using Mov = Pos;
 const Mov mov[5] = {{0, 1}, {0, -1}, {-1, 0}, {1, 0}, {0, 0}};
 
 #define min(x, y) ((x) < (y) ? (x) : (y))
-#define max(x, y) ((x) > (y) ? (x) : (y)
+#define max(x, y) ((x) > (y) ? (x) : (y))
 
 #endif //CODECRAFT2024_COMMON_H

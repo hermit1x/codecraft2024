@@ -56,3 +56,4 @@ for i in range(1, 4):
     print(f"map{i}: ave:{s[i].mean()} max:{s[i].max()} min:{s[i].min()}")
 
 print(f'sum: {s[1].mean() + s[2].mean() + s[3].mean()}')
+print(f'best: {s[1].max() + s[2].max() + s[3].max()}')

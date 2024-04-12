@@ -5,10 +5,27 @@
 #ifndef CODECRAFT2024_ICT_SHIP_H
 #define CODECRAFT2024_ICT_SHIP_H
 
-//#define DEBUG_SHIP
+#define DEBUG_SHIP
 
 #include "common.h"
 #include "ict_berth.h"
+
+
+enum ship_strategy { SHIP_VALUE_BY_DIS, SHIP_STOCK_BY_DIS, SHIP_VALUE, SHIP_STOCK, SHIP_DIS, SHIP_CSCAN, SHIP_VALUE_BY_DIS2, SHIP_VALUE_BY_DIS3 };
+#define SHIP_STRATEGY SHIP_VALUE_BY_DIS3
+/*
+ * benchmark:
+ * robot: 13, ship: 1
+ * value / dis : 357897
+ * stock / dis : 358206
+ * value : 336500
+ * stock : 334600
+ *
+ * cscan : 325359
+ * value/dis ver2 : 屎
+ * value/dis ver3 : 360763
+ */
+
 
 /*
  * 船的状态：
@@ -228,6 +245,13 @@ public:
     int getdis(PosDir pd) const {
         return dis[pd.pos.x][pd.pos.y][pd.dir];
     }
+    int getdis(Pos p) const {
+        return min( dis[p.x][p.y][0],
+                    min(dis[p.x][p.y][1],
+                        min(dis[p.x][p.y][2], dis[p.x][p.y][3])
+                    )
+                    );
+    }
 };
 std::vector<BerthMap> berthmaps, offloadmaps;
 
@@ -366,13 +390,13 @@ public:
             return;
         }
 
-        // TODO: 临终测量还得改
+        // 临终策略
         if (frame >= 14500 && status != SHIP_TO_OFFLOAD) {
-            if (is_berth(pd.pos)) want_acts.push_back({SHIP_CMD_DEPT, PosDir(), 0});
-            else want_acts.push_back({SHIP_CMD_NOTHING, PosDir(), 0});
-            status = SHIP_TO_OFFLOAD;
-            dest_berth = -1;
-            return;
+            dest_offloads = calc_best_offload();
+            if (offloadmaps[dest_offloads].getdis(pd) + 10 > 15000 - frame) {
+                status = SHIP_TO_OFFLOAD;
+                return;
+            }
         }
 #ifdef DEBUG_SHIP
         fprintf(stderr, "[%5d] [ship:%d] status: %s, to_berth:%d, to_offlaod:%d\n", frame, id, status_strs[status], dest_berth, dest_offloads);
@@ -503,32 +527,172 @@ public:
     }
 
     int calc_next_berth() {
-        // TODO: 继续优化这里的算法
-        double mx_value = 0, mx_berth = rand() % berth_num;
+        if (SHIP_STRATEGY == SHIP_VALUE_BY_DIS3) {
+            double mx_value = 0;
+            int mx_berth = rand() % berth_num;
 
-        fprintf(stderr, "[ ship:%d ] calc_next_berth\n", id);
-        for (int i = 0; i < berth_num; ++i) {
-            if (i == dest_berth) continue;
-            if (berthmaps[i].getdis(pd) == 0) continue;
-            fprintf(stderr, "[ berth:%d ][ occupy:%d ] value:%d, dis:%d, div:%lf\n", i, berths[i].occupy, berths[i].stock, berthmaps[i].getdis(pd), 1.0 * berths[i].stock / berthmaps[i].getdis(pd));
-            if (berths[i].occupy || berths[i].closed) continue;
-            if (mx_value < 1.0 * berths[i].remain_value / berthmaps[i].getdis(pd)) {
-                mx_value = 1.0 * berths[i].remain_value / berthmaps[i].getdis(pd);
-                mx_berth = i;
+            for (int i = 0; i < berth_num; ++i) {
+                if (i == dest_berth) continue;
+                if (berthmaps[i].getdis(pd) == 0) continue;
+                if (berths[i].occupy || berths[i].closed) continue;
+
+                // 二阶考虑
+                double berth_value = 1.0 * berths[i].remain_value / berthmaps[i].getdis(pd);
+                fprintf(stderr, "[ at:%d ]\n", i);
+                if (mx_value < berth_value) {
+                    mx_value = berth_value;
+                    mx_berth = i;
+                }
+
+                for (int j = 0; j < berth_num; ++j) {
+                    if (j == i) continue;
+                    if (j == dest_berth) continue;
+                    if (berths[j].occupy || berths[j].closed) continue;
+                    int dis1 = berthmaps[j].getdis(pd);
+                    int dis2 = INF;
+                    for (auto poses : berths[i].poses) dis2 = min(dis2, berthmaps[j].getdis( berths[i].loc) );
+                    fprintf(stderr, "[ship]- %d -[ %d ]- %d -[ %d ]\n", dis1, j, dis2, i);
+                    if (mx_value < 1.0 * berths[j].remain_value / dis1 + 1.0 * berths[i].remain_value / (dis1+dis2)) {
+                        mx_value = 1.0 * berths[j].remain_value / dis1 + 1.0 * berths[i].remain_value / (dis1+dis2);
+                        mx_berth = j;
+                        // 途径j换乘再去i更值
+                        fprintf(stderr, "[ship] -> %d -> %d ACCEPT\n", j, i);
+                    }
+                }
+
+
             }
+            return mx_berth;
         }
-        return mx_berth;
+        if (SHIP_STRATEGY == SHIP_VALUE_BY_DIS2) {
+            double mx_value = 0;
+            int mx_berth = rand() % berth_num;
+
+            for (int i = 0; i < berth_num; ++i) {
+                if (i == dest_berth) continue;
+                if (berthmaps[i].getdis(pd) == 0) continue;
+                if (berths[i].occupy || berths[i].closed) continue;
+
+                // 二阶考虑
+                double berth_value = 1.0 * berths[i].remain_value / berthmaps[i].getdis(pd);
+                fprintf(stderr, "[ at:%d ]\n", i);
+                for (int j = 0; j < berth_num; ++j) {
+                    if (j == i) continue;
+                    int min_d = INF;
+                    for (auto poses : berths[i].poses) min_d = min(min_d, berthmaps[j].getdis( berths[i].loc) );
+                    berth_value += 1.0 * berths[j].remain_value / min_d;
+                    fprintf(stderr, "[ at:%d ][ 2nd:%d ] dis: %d\n", i, j, min_d);
+                }
+
+                if (mx_value < berth_value) {
+                    mx_value = berth_value;
+                    mx_berth = i;
+                }
+            }
+            return mx_berth;
+        }
+
+        if (SHIP_STRATEGY == SHIP_CSCAN) {
+            int p = (dest_berth + 1) % berth_num;
+            while (berths[p].occupy) {
+                p = (p + 1) % berth_num;
+            }
+            return p;
+        }
+
+        if (SHIP_STRATEGY == SHIP_VALUE_BY_DIS) {
+            double mx_value = 0;
+            int mx_berth = rand() % berth_num;
+
+//            fprintf(stderr, "[ ship:%d ] calc_next_berth\n", id);
+            for (int i = 0; i < berth_num; ++i) {
+                if (i == dest_berth) continue;
+                if (berthmaps[i].getdis(pd) == 0) continue;
+//                fprintf(stderr, "[ berth:%d ][ occupy:%d ] value:%d, dis:%d, div:%lf\n", i, berths[i].occupy, berths[i].stock, berthmaps[i].getdis(pd), 1.0 * berths[i].stock / berthmaps[i].getdis(pd));
+                if (berths[i].occupy || berths[i].closed) continue;
+                if (mx_value < 1.0 * berths[i].remain_value / berthmaps[i].getdis(pd)) {
+                    mx_value = 1.0 * berths[i].remain_value / berthmaps[i].getdis(pd);
+                    mx_berth = i;
+                }
+            }
+            return mx_berth;
+        }
+        if (SHIP_STRATEGY == SHIP_STOCK_BY_DIS) {
+            double mx_value = 0;
+            int mx_berth = rand() % berth_num;
+
+//            fprintf(stderr, "[ ship:%d ] calc_next_berth\n", id);
+            for (int i = 0; i < berth_num; ++i) {
+                if (i == dest_berth) continue;
+                if (berthmaps[i].getdis(pd) == 0) continue;
+//                fprintf(stderr, "[ berth:%d ][ occupy:%d ] value:%d, dis:%d, div:%lf\n", i, berths[i].occupy, berths[i].stock, berthmaps[i].getdis(pd), 1.0 * berths[i].stock / berthmaps[i].getdis(pd));
+                if (berths[i].occupy || berths[i].closed) continue;
+                if (mx_value < 1.0 * berths[i].stock / berthmaps[i].getdis(pd)) {
+                    mx_value = 1.0 * berths[i].stock / berthmaps[i].getdis(pd);
+                    mx_berth = i;
+                }
+            }
+            return mx_berth;
+        }
+        if (SHIP_STRATEGY == SHIP_STOCK) {
+            int mx_stock = 0;
+            int mx_berth = rand() % berth_num;
+
+            for (int i = 0; i < berth_num; ++i) {
+                if (i == dest_berth) continue;
+                if (berthmaps[i].getdis(pd) == 0) continue;
+                if (berths[i].occupy || berths[i].closed) continue;
+                if (mx_stock < berths[i].stock) {
+                    mx_stock = berths[i].stock;
+                    mx_berth = i;
+                }
+            }
+            return mx_berth;
+        }
+        if (SHIP_STRATEGY == SHIP_VALUE) {
+            int mx_value = 0;
+            int mx_berth = rand() % berth_num;
+
+            for (int i = 0; i < berth_num; ++i) {
+                if (i == dest_berth) continue;
+                if (berthmaps[i].getdis(pd) == 0) continue;
+                if (berths[i].occupy || berths[i].closed) continue;
+                if (mx_value < berths[i].remain_value) {
+                    mx_value = berths[i].remain_value;
+                    mx_berth = i;
+                }
+            }
+            return mx_berth;
+        }
+
+        if (SHIP_STRATEGY == SHIP_DIS) {
+            int mn_dis = INF;
+            int mx_berth = rand() % berth_num;
+
+            for (int i = 0; i < berth_num; ++i) {
+                if (i == dest_berth) continue;
+                if (berthmaps[i].getdis(pd) == 0) continue;
+                if (berths[i].occupy || berths[i].closed) continue;
+                if (mn_dis > berthmaps[i].getdis(pd)) {
+                    mn_dis = berthmaps[i].getdis(pd);
+                    mx_berth = i;
+                }
+            }
+            return mx_berth;
+        }
     }
 
     int calc_best_offload() {
-        int mx_value = 0, dest_offload = rand() % offload_num;
+        int mn_dis = INF, offload = rand() % offload_num;
         for (int i = 0; i < offload_num; ++i) {
-            if (mx_value < offloadmaps[i].getdis(pd)) {
-                mx_value = offloadmaps[i].getdis(pd);
-                dest_offload = i;
+            fprintf(stderr, "[ offload:%d ] dis:%d\n", i, offloadmaps[i].getdis(pd));
+            if (mn_dis > offloadmaps[i].getdis(pd)) {
+                mn_dis = offloadmaps[i].getdis(pd);
+                offload = i;
             }
         }
-        return dest_offload;
+        fprintf(stderr, "[ best_offload ] %d\n", offload);
+        return offload;
     }
 
     void calc_path_to_berth() {
@@ -648,10 +812,10 @@ void ship_conflict_dfs(int ship_id) {
 }
 
 void handle_conflict_ship() {
-    for (int i = 0; i < ship_num; ++i) {
-        ships[i].assign_act(0);
-    }
-    return;
+//    for (int i = 0; i < ship_num; ++i) {
+//        ships[i].assign_act(0);
+//    }
+//    return;
 
     fprintf(stderr, "[conflict] start\n");
     for (int i = 0; i < 200; ++i) {
