@@ -300,12 +300,14 @@ public:
         printf("dept %d\n", id);
 //        fprintf(stderr, "- [ship:%d] cmd:DEPT\n", id);
         berths[dest_berth].occupy = 0;
+        fprintf(stderr, "[ free ][ cmd ] %d\n", dest_berth);
     }
 
     void berth() {
         printf("berth %d\n", id);
 //        fprintf(stderr, "- [ship:%d] cmd:BERTH (%d,%d)\n", id, pd.pos.x, pd.pos.y);
         berths[dest_berth].occupy = 1;
+        fprintf(stderr, "[occupy][ cmd ] %d\n", dest_berth);
     }
 
     void rot0() {
@@ -378,6 +380,7 @@ public:
         if (status == SHIP_AWAIT) {
             dest_berth = calc_next_berth();
             berths[dest_berth].occupy = 1;
+            fprintf(stderr, "[occupy][ calc ] %d\n", dest_berth);
             calc_path_to_berth();
             status = SHIP_TO_BERHT;
         }
@@ -403,7 +406,7 @@ public:
             if (loads == ship_capacity) {
                 want_acts.push_back({SHIP_CMD_DEPT, PosDir(), 0});
                 status = SHIP_TO_OFFLOAD;
-                dest_berth = -1;
+                dest_offloads = -1;
 #ifdef DEBUG_SHIP
                 fprintf(stderr, "[%5d] ship:%d IN_BERTH, berth:%d, load_full\n", frame, id, dest_berth);
 #endif
@@ -439,15 +442,14 @@ public:
             return;
         }
         if (status == SHIP_TO_OFFLOAD) {
-            if (dest_berth == -1) {
-                dest_berth = -2;
+            if (dest_offloads == -1) {
                 dest_offloads = calc_best_offload();
 #ifdef DEBUG_SHIP
                 fprintf(stderr, "[%5d] ship:%d TO_OFFLOAD, offload:%d\n", frame, id, dest_offloads);
 #endif
                 calc_path_to_offload();
             }
-            if (dest_berth == -2 && is_offload(pd.pos)) {
+            if (dest_berth != -1 && is_offload(pd.pos)) {
                 status = SHIP_AWAIT;
                 think(); // 希望这里递归不会出事？
                 return;
@@ -503,11 +505,15 @@ public:
     int calc_next_berth() {
         // TODO: 继续优化这里的算法
         double mx_value = 0, mx_berth = rand() % berth_num;
+
+        fprintf(stderr, "[ ship:%d ] calc_next_berth\n", id);
         for (int i = 0; i < berth_num; ++i) {
             if (i == dest_berth) continue;
+            if (berthmaps[i].getdis(pd) == 0) continue;
+            fprintf(stderr, "[ berth:%d ][ occupy:%d ] value:%d, dis:%d, div:%lf\n", i, berths[i].occupy, berths[i].stock, berthmaps[i].getdis(pd), 1.0 * berths[i].stock / berthmaps[i].getdis(pd));
             if (berths[i].occupy || berths[i].closed) continue;
-            if (mx_value < 1.0 * berths[i].stock / berthmaps[i].getdis(pd)) {
-                mx_value = 1.0 * berths[i].stock / berthmaps[i].getdis(pd);
+            if (mx_value < 1.0 * berths[i].remain_value / berthmaps[i].getdis(pd)) {
+                mx_value = 1.0 * berths[i].remain_value / berthmaps[i].getdis(pd);
                 mx_berth = i;
             }
         }

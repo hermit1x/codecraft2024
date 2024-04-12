@@ -10,7 +10,7 @@
 #include "ict_berth.h"
 #include "ict_obj.h"
 
-#define DEBUG_ROBOT
+//#define DEBUG_ROBOT
 //#define DEBUG_ROBOT_SCHEDULE
 
 using robotBirthPQnode = berthPQnode;
@@ -259,7 +259,9 @@ public:
             berths[dest_berth].tot_value += dest_obj.value;
 
             printf("pull %d\n", id);
+#ifdef DEBUG_ROBOT
             fprintf(stderr, "[%5d] #ROBOT:%d pull, berth:%d, berth_stock:%d, que.size:%lu\n", frame, id, dest_berth, berths[dest_berth].stock, berths[dest_berth].stocks.size());
+#endif
             carry = 0;
         }
         if (want_moves[assign_move_id].dir != 4) {
@@ -344,7 +346,7 @@ public:
         int obj_id = calc_best_obj();
         if (obj_id == -1) return false;
         dest_obj = objs[obj_id];
-        fprintf(stderr, "choose obj: %d (%d,%d)\n", obj_id, dest_obj.p.x, dest_obj.p.y);
+//        fprintf(stderr, "[ robot:%d ] choose obj: %d (%d,%d)\n", id, obj_id, dest_obj.p.x, dest_obj.p.y);
         objs.erase(objs.begin() + obj_id);
         return true;
     }
@@ -637,10 +639,10 @@ void handle_conflict_robot() {
         if (robots[i].status != TO_SHIP) robot_priority[robot_pp++] = i;
     }
 
-    for (int i = 0; i < robot_num; ++i) {
-        fprintf(stderr, "%d -> ", robot_priority[i]);
-    }
-    fprintf(stderr, "\n");
+//    for (int i = 0; i < robot_num; ++i) {
+//        fprintf(stderr, "%d -> ", robot_priority[i]);
+//    }
+//    fprintf(stderr, "\n");
 
     int rbi, rbj;
     for (int i = 0; i < robot_num; ++i) {
@@ -661,11 +663,11 @@ void handle_conflict_robot() {
     }
 
     for (int i = 0; i < conflict_vec_cnt; ++i) {
-        fprintf(stderr, "[conflict_vec:%d]: ", i);
-        for (auto rid : conflict_vec[i]) {
-            fprintf(stderr, "%d ", rid);
-        }
-        fprintf(stderr, "\n");
+//        fprintf(stderr, "[conflict_vec:%d]: ", i);
+//        for (auto rid : conflict_vec[i]) {
+//            fprintf(stderr, "%d ", rid);
+//        }
+//        fprintf(stderr, "\n");
         if (!conflict_dfs(i, 0)) {
             fprintf(stderr, "# ERROR: NO POSSIBLE SOLUTION\n");
             conflict_error_robot = true;
