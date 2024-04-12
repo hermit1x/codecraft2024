@@ -372,8 +372,9 @@ public:
             dest_berth = -1;
             return;
         }
-
+#ifdef DEBUG_SHIP
         fprintf(stderr, "[%5d] [ship:%d] status: %s, to_berth:%d, to_offlaod:%d\n", frame, id, status_strs[status], dest_berth, dest_offloads);
+#endif
         if (status == SHIP_AWAIT) {
             dest_berth = calc_next_berth();
             berths[dest_berth].occupy = 1;
@@ -381,8 +382,9 @@ public:
             status = SHIP_TO_BERHT;
         }
         if (status == SHIP_TO_BERHT) {
-            fprintf(stderr, "[%5d] ship:%d TO_BERTH, pos: (%d,%d), berth:%d, dis:%d, is_anchorage:%d\n", frame, id, pd.pos.x, pd.pos.y, dest_berth, seamap->getdis(pd),
-                    is_anchorage(pd.pos));
+#ifdef DEBUG_SHIP
+            fprintf(stderr, "[%5d] ship:%d TO_BERTH, pos: (%d,%d), berth:%d, dis:%d, is_anchorage:%d\n", frame, id, pd.pos.x, pd.pos.y, dest_berth, seamap->getdis(pd), is_anchorage(pd.pos));
+#endif
             if (seamap->getdis(pd) < 20 && is_anchorage(pd.pos)) {
                 status = SHIP_IN_ANCHORAGE;
             }
@@ -402,7 +404,9 @@ public:
                 want_acts.push_back({SHIP_CMD_DEPT, PosDir(), 0});
                 status = SHIP_TO_OFFLOAD;
                 dest_berth = -1;
+#ifdef DEBUG_SHIP
                 fprintf(stderr, "[%5d] ship:%d IN_BERTH, berth:%d, load_full\n", frame, id, dest_berth);
+#endif
                 return;
             }
             fprintf(stderr, "[%5d] ship:%d IN_BERTH, berth:%d, stock:%d, loads:%d\n", frame, id, dest_berth, berths[dest_berth].stock, loads);
@@ -410,7 +414,9 @@ public:
                 if (rand() % 100 < 20) {
                     want_acts.push_back({SHIP_CMD_DEPT, PosDir(), 0});
                     status = SHIP_AWAIT;
+#ifdef DEBUG_SHIP
                     fprintf(stderr, "[%5d] ship:%d IN_BERTH, berth:%d, empty DEPT\n", frame, id, dest_berth);
+#endif
                     return;
                 }
             }
@@ -436,7 +442,9 @@ public:
             if (dest_berth == -1) {
                 dest_berth = -2;
                 dest_offloads = calc_best_offload();
+#ifdef DEBUG_SHIP
                 fprintf(stderr, "[%5d] ship:%d TO_OFFLOAD, offload:%d\n", frame, id, dest_offloads);
+#endif
                 calc_path_to_offload();
             }
             if (dest_berth == -2 && is_offload(pd.pos)) {
@@ -449,7 +457,9 @@ public:
     }
 
     void act() {
+#ifdef DEBUG_SHIP
         fprintf(stderr, "[%5d] ship:%d FINAL_ACT: %s\n", frame, id, cmd_strs[want_acts[assign_act_id].act]);
+#endif
         switch (want_acts[assign_act_id].act) {
             case SHIP_CMD_DEPT:
                 dept();
@@ -483,10 +493,11 @@ public:
         if (nxt.is_legal() && seamap->getdis(nxt) <= cur_dis) want_acts.push_back({SHIP_CMD_SHIP, nxt, seamap->getdis(nxt)});
         want_acts.push_back({SHIP_CMD_NOTHING, pd, cur_dis});
         std::sort(want_acts.begin(), want_acts.end());
-
+#ifdef DEBUG_SHIP
         for (auto &x : want_acts) {
             fprintf(stderr, "[     ] ship:%d ACT: %s, dis:%d\n", id, cmd_strs[x.act], x.value);
         }
+#endif
     }
 
     int calc_next_berth() {
@@ -529,11 +540,11 @@ std::vector<Ship> ships;
 int ship_conflict_mat[200][200];
 
 bool ship_conflict_test(const PosDir &pd) {
-    fprintf(stderr, "[test conflict] pd: (%d,%d)\n", pd.pos.x, pd.pos.y);
+//    fprintf(stderr, "[test conflict] pd: (%d,%d)\n", pd.pos.x, pd.pos.y);
     for (int i = 0; i < 6; ++i) {
         Pos p = pd.pos + ship_dir_mapping[pd.dir][i];
         if (is_sea_main(p)) continue;
-        fprintf(stderr, "[test conflict] (%d,%d)\n", p.x, p.y);
+//        fprintf(stderr, "[test conflict] (%d,%d)\n", p.x, p.y);
         if (ship_conflict_mat[p.x][p.y] != -1) return false;
     }
     return true;
@@ -541,15 +552,15 @@ bool ship_conflict_test(const PosDir &pd) {
 
 int ship_conflict_get(const PosDir &pd) {
     int conflict_with = -1;
-    fprintf(stderr, "[get conflict] pd: (%d,%d)\n", pd.pos.x, pd.pos.y);
+//    fprintf(stderr, "[get conflict] pd: (%d,%d)\n", pd.pos.x, pd.pos.y);
     for (int i = 0; i < 6; ++i) {
         Pos p = pd.pos + ship_dir_mapping[pd.dir][i];
         if (is_sea_main(p)) continue;
         if (ship_conflict_mat[p.x][p.y] != -1) {
-            fprintf(stderr, "[get conflict] p:  (%d, %d): %d\n", p.x, p.y, ship_conflict_mat[p.x][p.y]);
+//            fprintf(stderr, "[get conflict] p:  (%d, %d): %d\n", p.x, p.y, ship_conflict_mat[p.x][p.y]);
             if (conflict_with == -1) conflict_with = ship_conflict_mat[p.x][p.y];
             else if (conflict_with != ship_conflict_mat[p.x][p.y]) {
-                fprintf(stderr, "[get conflict] conflict with multi: %d + %d\n", conflict_with, ship_conflict_mat[p.x][p.y]);
+//                fprintf(stderr, "[get conflict] conflict with multi: %d + %d\n", conflict_with, ship_conflict_mat[p.x][p.y]);
                 return -1;
             }
         }
@@ -562,7 +573,7 @@ void ship_conflict_erase(const PosDir &pd) {
         Pos p = pd.pos + ship_dir_mapping[pd.dir][i];
         if (is_sea_main(p)) continue;
         ship_conflict_mat[p.x][p.y] = -1;
-        fprintf(stderr, "[conflict] erase (%d,%d)\n", p.x, p.y);
+//        fprintf(stderr, "[conflict] erase (%d,%d)\n", p.x, p.y);
     }
 }
 
@@ -571,31 +582,31 @@ void ship_conflict_occupy(const PosDir &pd, int ship_id) {
         Pos p = pd.pos + ship_dir_mapping[pd.dir][i];
         if (is_sea_main(p)) continue;
         ship_conflict_mat[p.x][p.y] = ship_id;
-        fprintf(stderr, "[conflict] occupy (%d,%d)\n", p.x, p.y);
+//        fprintf(stderr, "[conflict] occupy (%d,%d)\n", p.x, p.y);
     }
 }
 
 void ship_conflict_dfs(int ship_id) {
     if (ship_id == ship_num) return;
-    fprintf(stderr, "[conflict] DFS ship:%d, act.size:%lu\n", ship_id, ships[ship_id].want_acts.size());
+//    fprintf(stderr, "[conflict] DFS ship:%d, act.size:%lu\n", ship_id, ships[ship_id].want_acts.size());
     ship_conflict_erase(ships[ship_id].pd);
     if (ships[ship_id].want_acts.size() == 1) {
-        fprintf(stderr, "[conflict] ship:%d only one act: %s\n", ship_id, cmd_strs[ships[ship_id].want_acts[0].act]);
+//        fprintf(stderr, "[conflict] ship:%d only one act: %s\n", ship_id, cmd_strs[ships[ship_id].want_acts[0].act]);
         if (ships[ship_id].want_acts[0].pd == PosDir()) {
-            fprintf(stderr, "[conflict] ship:%d not move cmd\n", ship_id);
+//            fprintf(stderr, "[conflict] ship:%d not move cmd\n", ship_id);
             ships[ship_id].assign_act(0);
             ship_conflict_dfs(ship_id + 1);
             return;
         }
-        fprintf(stderr, "[conflict] ship:%d is move act\n", ship_id);
+//        fprintf(stderr, "[conflict] ship:%d is move act\n", ship_id);
     }
     for (int i = 0; i < ships[ship_id].want_acts.size(); ++i) {
         ships[ship_id].assign_act(i);
-        fprintf(stderr, "[conflict] act_id:%d\n", i);
-        fprintf(stderr, "[        ] act: %s\n", cmd_strs[ships[ship_id].want_acts[i].act]);
+//        fprintf(stderr, "[conflict] act_id:%d\n", i);
+//        fprintf(stderr, "[        ] act: %s\n", cmd_strs[ships[ship_id].want_acts[i].act]);
         if (ship_conflict_test(ships[ship_id].want_acts[i].pd)) {
             // 有合法的就直接走，不管后面的死活
-            fprintf(stderr, "[conflict] ship:%d act:%s legal\n", ship_id, cmd_strs[ships[ship_id].want_acts[i].act]);
+//            fprintf(stderr, "[conflict] ship:%d act:%s legal\n", ship_id, cmd_strs[ships[ship_id].want_acts[i].act]);
             ship_conflict_occupy(ships[ship_id].want_acts[i].pd, ship_id);
             ship_conflict_dfs(ship_id + 1);
             return;
@@ -603,12 +614,12 @@ void ship_conflict_dfs(int ship_id) {
         else {
             int conflict_id = ship_conflict_get(ships[ship_id].want_acts[i].pd);
             if (conflict_id == -1) continue;
-            fprintf(stderr, "[conflict] ship:%d act:%s conflict with %d\n", ship_id, cmd_strs[ships[ship_id].want_acts[i].act], conflict_id);
+//            fprintf(stderr, "[conflict] ship:%d act:%s conflict with %d\n", ship_id, cmd_strs[ships[ship_id].want_acts[i].act], conflict_id);
             if (conflict_id > ship_id) continue;
             if (ships[conflict_id].want_acts[ ships[conflict_id].assign_act_id ].act == SHIP_CMD_NOTHING) {
                 // 赶走前一个NOTHING
                 ships[conflict_id].assign_dept();
-                fprintf(stderr, "[conflict] ship:%d FORCE DEPT %d\n", ship_id, conflict_id);
+//                fprintf(stderr, "[conflict] ship:%d FORCE DEPT %d\n", ship_id, conflict_id);
                 ship_conflict_dfs(conflict_id + 1);
                 return;
             }
@@ -618,7 +629,7 @@ void ship_conflict_dfs(int ship_id) {
     // 如果包括 NOTHING 在内都没有合法的，那就 BERTH 重置了
     ships[ship_id].assign_dept();
     ship_conflict_dfs(ship_id + 1);
-    fprintf(stderr, "[conflict] SHIP:%d FORCE DEPT\n", ship_id);
+//    fprintf(stderr, "[conflict] SHIP:%d FORCE DEPT\n", ship_id);
     return;
     /*
      * 这套逻辑不一定是最佳的，但可以解决
@@ -631,10 +642,10 @@ void ship_conflict_dfs(int ship_id) {
 }
 
 void handle_conflict_ship() {
-//    for (int i = 0; i < ship_num; ++i) {
-//        ships[i].assign_act(0);
-//    }
-//    return;
+    for (int i = 0; i < ship_num; ++i) {
+        ships[i].assign_act(0);
+    }
+    return;
 
     fprintf(stderr, "[conflict] start\n");
     for (int i = 0; i < 200; ++i) {
@@ -663,7 +674,7 @@ void update_ship(int frame_id) {
 }
 
 void test_buy_ship(int frame, int &money) {
-    fprintf(stderr, "test_buy_ship frame:%d\n", frame);
+//    fprintf(stderr, "test_buy_ship frame:%d\n", frame);
     if (ship_num >= want_ship_num) return;
     if (money < 8000) return;
     fprintf(stderr, "can_buy_ship\n");
