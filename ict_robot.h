@@ -10,7 +10,7 @@
 #include "ict_berth.h"
 #include "ict_obj.h"
 
-//#define DEBUG_ROBOT
+#define DEBUG_ROBOT
 //#define DEBUG_ROBOT_SCHEDULE
 
 using robotBirthPQnode = berthPQnode;
@@ -55,6 +55,11 @@ void init_robot_birth() {
                     robotBirths.back().dis[p.x][p.y] = 0;
                     vis[p.x][p.y] = 0;
                     robotBirthPQ.push(berthPQnode(p, 0));
+                }
+                for (int ii = 0; ii < 200; ++ii) {
+                    for (int jj = 0; jj < 200; ++jj) {
+                        robotBirths.back().dis[ii][jj] = INF;
+                    }
                 }
                 while (!robotBirthPQ.empty()) {
                     robotBirthPQnode top = robotBirthPQ.top();
@@ -137,7 +142,6 @@ public:
                 reachable[i][j] = (robotBirths[birth_id].dis[i][j] < INF);
             }
         }
-
         calc_best_berth();
     }
 
@@ -225,9 +229,9 @@ public:
 
     void act() {
 #ifdef DEBUG_ROBOT
-        fprintf(stderr, "#ROBOT:%d f:%d, act size:%d\n", id, frame, (int)want_moves.size());
+        fprintf(stderr, "[ robot:%d ][ act ], act.size:%d\n", id, (int)want_moves.size());
         for (int i = 0; i < want_moves.size(); ++i) {
-            fprintf(stderr, "# ROBOT:%d MOVEINFO mid:%d, dir:%d, (%d,%d)->(%d,%d), dis:%d\n", id, i, want_moves[i].dir, p.x, p.y, want_moves[i].p.x, want_moves[i].p.y, want_moves[i].value);
+            fprintf(stderr, "[ act:%d ] (%d,%d)->(%d,%d), dis:%d\n", i, p.x, p.y, want_moves[i].p.x, want_moves[i].p.y, want_moves[i].value);
         }
 #endif
         if (act_before_move == ROBOT_GET) {
@@ -260,20 +264,18 @@ public:
         }
         if (want_moves[assign_move_id].dir != 4) {
             printf("move %d %d\n", id, want_moves[assign_move_id].dir);
-//            fprintf(stderr, "robot %d: (%d,%d)->(%d,%d)\n", id, x, y, want_moves[assign_move_id].x, want_moves[assign_move_id].y);
-            p = want_moves[assign_move_id].p;
 #ifdef DEBUG_ROBOT
-            if (!is_legal_bot(p)) {
-                fprintf(stderr, "robot %d: (%d,%d)->(%d,%d)\n", id, p.x, p.y, want_moves[assign_move_id].p.x, want_moves[assign_move_id].p.y);
-            }
+            fprintf(stderr, "[ final act:%d ]: (%d,%d)->(%d,%d)\n", assign_move_id, p.x, p.y, want_moves[assign_move_id].p.x, want_moves[assign_move_id].p.y);
 #endif
+
+            p = want_moves[assign_move_id].p;
         }
 #ifdef DEBUG_ROBOT
         else {
-            fprintf(stderr, "robot %d: no move, amid:%d, status: %d, carry: %d, obj:(%d,%d)\n", id, assign_move_id, status, carry, dest_obj.p.x, dest_obj.p.y);
-            for (int i = 0; i < want_moves.size(); ++i) {
-                fprintf(stderr, "# ROBOT:%d MOVEINFO mid:%d, dir:%d, (%d,%d)->(%d,%d), dis:%d\n", id, i, want_moves[i].dir, p.x, p.y, want_moves[i].p.x, want_moves[i].p.y, want_moves[i].value);
-            }
+            fprintf(stderr, "[ final act:%d ]: (%d,%d) NO_MOVE\n", assign_move_id, p.x, p.y);
+//            for (int i = 0; i < want_moves.size(); ++i) {
+//                fprintf(stderr, "# ROBOT:%d MOVEINFO mid:%d, dir:%d, (%d,%d)->(%d,%d), dis:%d\n", id, i, want_moves[i].dir, p.x, p.y, want_moves[i].p.x, want_moves[i].p.y, want_moves[i].value);
+//            }
         }
 #endif
     }
@@ -341,8 +343,8 @@ public:
     bool choose_obj() {
         int obj_id = calc_best_obj();
         if (obj_id == -1) return false;
-
         dest_obj = objs[obj_id];
+        fprintf(stderr, "choose obj: %d (%d,%d)\n", obj_id, dest_obj.p.x, dest_obj.p.y);
         objs.erase(objs.begin() + obj_id);
         return true;
     }
@@ -618,7 +620,7 @@ void handle_conflict_robot() {
             if (robots[j].is_safe) continue;
             if (dis_man(robots[i].p, robots[j].p) < 3) {
                 if (dsu.find(i) != dsu.find(j)) {
-                    dsu.unite(i, j);
+                    dsu.unite(j, i);
                 }
             }
         }
@@ -634,6 +636,11 @@ void handle_conflict_robot() {
     for (int i = 0; i < robot_num; ++i) {
         if (robots[i].status != TO_SHIP) robot_priority[robot_pp++] = i;
     }
+
+    for (int i = 0; i < robot_num; ++i) {
+        fprintf(stderr, "%d -> ", robot_priority[i]);
+    }
+    fprintf(stderr, "\n");
 
     int rbi, rbj;
     for (int i = 0; i < robot_num; ++i) {
@@ -654,6 +661,11 @@ void handle_conflict_robot() {
     }
 
     for (int i = 0; i < conflict_vec_cnt; ++i) {
+        fprintf(stderr, "[conflict_vec:%d]: ", i);
+        for (auto rid : conflict_vec[i]) {
+            fprintf(stderr, "%d ", rid);
+        }
+        fprintf(stderr, "\n");
         if (!conflict_dfs(i, 0)) {
             fprintf(stderr, "# ERROR: NO POSSIBLE SOLUTION\n");
             conflict_error_robot = true;
@@ -681,7 +693,7 @@ void test_buy_robot(int frame, int &money) {
             if (money < 2000) break;
             printf("lbot %d %d\n", i.poses[0].x, i.poses[0].y);
             money -= 2000;
-            fprintf(stderr, "buy bot:%d (%d,%d)\n", cnt++, i.poses[0].x, i.poses[0].y);
+            fprintf(stderr, "buy bot:%d (%d,%d), money_left:%d\n", cnt++, i.poses[0].x, i.poses[0].y, money);
             robots.push_back(Robot(i.poses[0].x, i.poses[0].y, robot_num++, 0, 0));
         }
         if (money < 2000) break;

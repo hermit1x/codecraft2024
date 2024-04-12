@@ -692,7 +692,8 @@ void test_buy_ship(int frame, int &money) {
                 if (flag) continue;
 
                 printf("lboat %d %d\n", i, j);
-                fprintf(stderr, "buy_ship (%d, %d)\n", i, j);
+                money -= 8000;
+                fprintf(stderr, "buy_ship (%d, %d), money_left:%d\n", i, j, money);
                 ships.push_back(Ship(i, j));
                 ship_num += 1;
                 return;
