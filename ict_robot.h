@@ -120,21 +120,25 @@ struct BerthInfo {
 
 void calc_is_safe(int id);
 
+using robotPQnode = berthPQnode;
+std::priority_queue<robotPQnode> robotPQ;
+
 class Robot {
 public:
     Pos p;
     int id;
     int frame;
-    int carry;
+    int carry, capacity;
     int dest_berth;
     robot_status status;
     Obj dest_obj;
+    Obj carry_objs[2];
 
     int dis[201][201];
     int vis[201][201];
     int reachable[201][201];
 
-    Robot(int _x, int _y, int _id, int _frame, int birth_id) : p({_x, _y}), id(_id), status(NOTHING), frame(_frame), carry(0), dest_berth(0) {
+    Robot(int _x, int _y, int _id, int _frame, int birth_id, int _cap) : p({_x, _y}), id(_id), status(NOTHING), frame(_frame), carry(0), dest_berth(0), capacity(_cap) {
         for (int i = 0; i < 200; ++i) {
             for (int j = 0; j < 200; ++j) {
                 dis[i][j] = INF;
@@ -186,20 +190,52 @@ public:
             return;
         }
         if (status == AT_OBJ) {
+//            fprintf(stderr, "[ robot:%d ] AT_OBJ\n", id);
             act_before_move = ROBOT_GET;
-            status = TO_SHIP;
-            calc_best_berth();
-            calc_moves();
-            return;
+            carry_objs[carry] = dest_obj;
+            carry++;
+            if (capacity == 1) {
+//                fprintf(stderr, "[ robot:%d ] type 1: cap1 carry1\n", id);
+                status = TO_SHIP;
+                calc_best_berth();
+                calc_moves();
+                return;
+            }
+            if (capacity == 2) {
+                if (carry == 2) {
+                    fprintf(stderr, "[ robot:%d ] type 2: carry 2 obj\n", id);
+                    status = TO_SHIP;
+                    calc_best_berth();
+                    calc_moves();
+                    return;
+                }
+                else {
+                    fprintf(stderr, "[ robot:%d ] type 3: pick second obj\n", id);
+                    status = TO_OBJ;
+                    calc_second_obj();
+                    clear_dis();
+                    calc_moves();
+                    return;
+                }
+            }
         }
         if (status == TO_SHIP) {
-            // TODO:
-//            if (frame > 12000 && berths[dest_berth].closed) calc_best_berth();
+            if (frame > 14000 && berths[dest_berth].closed) calc_best_berth();
             calc_moves();
             return;
         }
         if (status == AT_SHIP) {
             act_before_move = ROBOT_PULL;
+//            fprintf(stderr, "[ robot:%d ] type 4: pull, carry: %d\n", id, carry);
+            if (carry > 1) {
+                fprintf(stderr, "[ robot:%d ] type 4: pull not finish\n", id);
+                // 再等一帧
+                status = TO_SHIP;
+                calc_moves();
+
+                return;
+            }
+//            fprintf(stderr, "[ robot:%d ] type 4: pull is finish\n", id);
             status = NOTHING;
             // 下面接NOTHING的判断，看看有没有物体能捡
         }
@@ -230,11 +266,18 @@ public:
     void act() {
 #ifdef DEBUG_ROBOT
         fprintf(stderr, "[ robot:%d ][ act ], act.size:%d\n", id, (int)want_moves.size());
+        if ((int)want_moves.size() == 0) {
+            fprintf(stderr, "[ robot:%d ] status: %d, carry: %d\n", id, status, carry);
+        }
         for (int i = 0; i < want_moves.size(); ++i) {
             fprintf(stderr, "[ act:%d ] (%d,%d)->(%d,%d), dis:%d\n", i, p.x, p.y, want_moves[i].p.x, want_moves[i].p.y, want_moves[i].value);
         }
 #endif
         if (act_before_move == ROBOT_GET) {
+            fprintf(stderr, "[ robot:%d ][ GET ] obj: (%d,%d) v:%d\n", id, carry_objs[carry-1].p.x, carry_objs[carry-1].p.y, carry_objs[carry-1].value);
+            if (mat[p.x][p.y].has_obj == false) {
+                fprintf(stderr, "[ robot:%d ] ERROR, obj not exist\n", id);
+            }
             printf("get %d\n", id);
 //            berth[dest_berth].booked += 1;
 
@@ -252,11 +295,13 @@ public:
             carry = 1;
         }
         if (act_before_move == ROBOT_PULL) {
-            berths[dest_berth].stocks.push(dest_obj.value);
+            carry--;
+            fprintf(stderr, "[ robot:%d ][ PULL ] obj: (%d,%d) v:%d\n", id, carry_objs[carry].p.x, carry_objs[carry].p.y, carry_objs[carry].value);
+            berths[dest_berth].stocks.push(carry_objs[carry].value);
             berths[dest_berth].stock += 1;
-            berths[dest_berth].remain_value += dest_obj.value;
+            berths[dest_berth].remain_value += carry_objs[carry].value;
             berths[dest_berth].tot_stock += 1;
-            berths[dest_berth].tot_value += dest_obj.value;
+            berths[dest_berth].tot_value += carry_objs[carry].value;
 
             printf("pull %d\n", id);
 #ifdef DEBUG_ROBOT
@@ -306,40 +351,6 @@ public:
             }
         }
         return res;
-        /*
-        // 选当前价值最大的且能拿得到的
-        int max_val = 0, res = -1;
-        int obj_x, obj_y, obj_dis, obj_v;
-        for (int i = 0; i < objects.size(); ++i) {
-            obj_x = objects[i].x;
-            obj_y = objects[i].y;
-            obj_v = objects[i].value;
-            obj_dis = mat[obj_x][obj_y].dist[dest_berth];
-            if (objects[i].time_appear + 1000 < frame + obj_dis) continue;
-            if (max_val < obj_v) {
-                max_val = obj_v;
-                res = i;
-            }
-        }
-        return res;
-        */
-        /*
-        // 简单以最近的来选
-        int min_dis = inf_dist, res = -1;
-        int obj_x, obj_y, obj_dis;
-        for (int i = 0; i < objects.size(); ++i) {
-            obj_x = objects[i].x;
-            obj_y = objects[i].y;
-            obj_dis = mat[obj_x][obj_y].dist[dest_berth];
-            if (!reachable[obj_x][obj_y]) continue;
-            if (objects[i].time_appear + 1000 + 500 < frame + obj_dis) continue;
-            if (min_dis > obj_dis) {
-                min_dis = obj_dis;
-                res = i;
-            }
-        }
-        return res;
-         */
     }
 
     bool choose_obj() {
@@ -477,12 +488,12 @@ public:
         double l_wokers[berth_num], l_future[berth_num], sum_future = 0;
         for (int i = 0; i < berth_num; ++i) {
             l_wokers[i] = berths[i].workers;
-            l_future[i] = berths[i].future_value;
+            l_future[i] = berths[i].remain_value;
 //            fprintf(stderr, "# berth %d: before calc w:%f, v:%f\n", i, l_wokers[i], l_future[i]);
             sum_future += l_future[i];
         }
         for (int i = 0; i < berth_num; ++i) {
-            l_wokers[i] /= 10.0;
+            l_wokers[i] /= 1.0 * berth_num;
             l_future[i] /= sum_future;
         }
         if (l_wokers[dest_berth] - l_future[dest_berth] > 0.15) {
@@ -535,6 +546,77 @@ public:
             dest_berth = 0;
         }
         berths[dest_berth].workers += 1;
+    }
+
+    void calc_second_obj() {
+#ifdef DEBUG_ROBOT
+        fprintf(stderr, "# ROBOT:%d call calc_path_to_obj()\n", id);
+#endif
+        // 以bot为中心做一个bfs，距离50以内的物体，选价值最高
+        clear_dis();
+
+        std::vector<Obj> near_objs;
+
+        robotPQ.push(robotPQnode (p, 0));
+        Pos nxt;
+        while (!robotPQ.empty()) {
+            robotPQnode top = robotPQ.top();
+            robotPQ.pop();
+//        fprintf(stderr, "PQ2 loop: (%d, %d): %d\n", p.x, p.y, p.dr);
+            if (vis[top.p.x][top.p.y]) continue;
+            vis[top.p.x][top.p.y] = 1;
+            dis[top.p.x][top.p.y] = top.d;
+            if (mat[top.p.x][top.p.y].has_obj) {
+                int obj_id = find_obj(top.p);
+                if (obj_id != -1) {
+                    near_objs.push_back(objs[obj_id]);
+                }
+            }
+            if (top.d > 50) continue;
+
+            int rand_base = rand() % 4;
+            for (int i, j = 0; j < 4; ++j) {
+                i = (rand_base + j) % 4;
+                nxt = top.p + mov[i];
+
+                if (is_legal_bot(nxt)) {
+                    if (top.d < dis[nxt.x][nxt.y]) {
+                        robotPQ.emplace(
+                                nxt,
+                                top.d + 1
+                        );
+                    }
+                }
+            }
+        }
+
+
+        // 最大化 value / dist
+        double max_value = 0;
+        int res = -1, obj_dis, obj_v;
+        Pos obj_p;
+        for (int i = 0; i < near_objs.size(); ++i) {
+            obj_p = near_objs[i].p;
+            obj_v = near_objs[i].value;
+            obj_dis = dis[obj_p.x][obj_p.y];
+//            if (!reachable[obj_p.x][obj_p.y]) continue;
+//            if (objs[i].time_appear + 1000 < frame + obj_dis) continue;
+//            fprintf(stderr, "obj: (%d,%d) v:%d, d:%d\n", obj_p.x, obj_p.y, obj_v, obj_dis);
+            if (max_value < 1.0 * obj_v / obj_dis) {
+                max_value = 1.0 * obj_v / obj_dis;
+                res = i;
+            }
+        }
+        if (res == -1) {
+            fprintf(stderr, "NO NEAR SECOND OBJ, USE GLOBAL\n");
+            choose_obj();
+            calc_best_berth();
+            return;
+        }
+
+        dest_obj = near_objs[res];
+//        fprintf(stderr, "[ robot:%d ] choose obj: %d (%d,%d)\n", id, obj_id, dest_obj.p.x, dest_obj.p.y);
+
     }
 };
 std::vector<Robot> robots;
@@ -690,15 +772,26 @@ void update_robot(int frame_id) {
 
 void test_buy_robot(int frame, int &money) {
     static int cnt = 0;
+//    fprintf(stderr, "[ %5d ][ test_buy ] money:%d, cnt:%d, robot_num:%d\n", frame, money, cnt, robot_num);
     while (cnt < want_robot_num) {
         for (auto i : robotBirths) {
-            if (money < 2000) break;
-            printf("lbot %d %d 0\n", i.poses[0].x, i.poses[0].y);
-            money -= 2000;
-            fprintf(stderr, "buy bot:%d (%d,%d), money_left:%d\n", cnt++, i.poses[0].x, i.poses[0].y, money);
-            robots.push_back(Robot(i.poses[0].x, i.poses[0].y, robot_num++, 0, 0));
+            if (use_robot_type == 1) {
+                if (money < 2000) break;
+                printf("lbot %d %d 0\n", i.poses[0].x, i.poses[0].y);
+                money -= 2000;
+                fprintf(stderr, "[ %5d ] buy_bot:%d (%d,%d), money_left:%d\n", frame, cnt++, i.poses[0].x, i.poses[0].y, money);
+                robots.push_back(Robot(i.poses[0].x, i.poses[0].y, robot_num++, frame, 0, 1));
+            }
+            else {
+                if (money < 5000) break;
+                printf("lbot %d %d 1\n", i.poses[0].x, i.poses[0].y);
+                money -= 5000;
+                fprintf(stderr, "buy bot:%d (%d,%d), money_left:%d\n", cnt++, i.poses[0].x, i.poses[0].y, money);
+                robots.push_back(Robot(i.poses[0].x, i.poses[0].y, robot_num++, frame, 0, 2));
+            }
         }
-        if (money < 2000) break;
+        if (use_robot_type == 1) { if (money < 2000) break; }
+        else { if (money < 5000) break; }
     }
 }
 

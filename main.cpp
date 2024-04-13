@@ -25,20 +25,27 @@ double t_r_in = 0, t_r_think = 0, t_r_act = 0;
 double t_s_in = 0, t_s_think = 0, t_s_act = 0;
 #define my_difftime(t1, t0) ((double)(t1 - t0) / CLOCKS_PER_SEC)
 
-int tot_value = 0;
+int map1 = 0, map2 = 0;
 
 void Init() {
     srand((unsigned int)time(NULL));
     init_map();
     if (is_ship_buy(Pos(2, 2))) {
         // map1
+        map1 = 1;
         want_ship_num = 2;
-        want_robot_num = 14;
+        want_robot_num = 14 ;
+        SHIP_STRATEGY = SHIP_VALUE_BY_DIS;
     }
     if (is_ship_buy(Pos(3, 22))) {
         // map2
+        map2 = 1;
         want_ship_num = 1;
         want_robot_num = 20;
+        SHIP_STRATEGY = SHIP_VALUE_BY_DIS;
+        /*
+         * 1+20 69300
+         */
     }
 
     init_berth();
@@ -50,33 +57,6 @@ void Init() {
     scanf("%s", okk);
     init_sea_map();
 
-//    debug_print_dist(0);
-
-    /* 计算港口价值
-     * 价值 = \sum 1/(dis[x][y])
-     * 对于多个地方都能抵达的陆地，对港口i的贡献为
-     * (1/Di) * [(1/Di) / (1/Di + 1/Dj + 1/Dk)]
-     *
-     * */
-//    double dominator = 0; // 分母
-//    for (int x = 0; x < 200; ++x) {
-//        for (int y = 0; y < 200; ++y) {
-//            dominator = 0;
-//            for (int i = 0; i < berth_num; ++i) {
-//                if (is_reachable({x, y}, i) &&  mat[x][y].dist[i] != 0) {
-//                    dominator += 1.0 / (double)mat[x][y].dist[i];
-//                }
-//            }
-//            for (int i = 0; i < berth_num; ++i) {
-//                if (is_reachable({x, y}, i) &&  mat[x][y].dist[i] != 0) {
-//                    berth[i].estimate_value += 1.0 / ((double)mat[x][y].dist[i] * (double)mat[x][y].dist[i]) / dominator;
-//                }
-//            }
-//        }
-//    }
-
-
-//    calc_pd();
     printf("OK\n");
     fflush(stdout);
 #ifdef DEBUG_FLAG
@@ -113,9 +93,10 @@ int main() {
     Init();
     clock_t t01 = clock();
     t_init = my_difftime(t01, t00);
-
+    if (map2) berths[1].closed = 1;
     int frame_id, money;
     for (int frame = 1; frame <= 15000; frame++) {
+        if (map1 && frame > 13000) berths[0].closed = 1;
 #ifdef DEBUG_FLAG
         fprintf(stderr, "#1 Frame start\n");
 #endif
@@ -174,13 +155,22 @@ int main() {
     }
 //    fprintf(stderr, "v_full speed: %d\n\n", v_full);
 //#ifdef DEBUG_BERTH
-    fprintf(stderr, "#TOTAL VALUE %d\n", tot_value);
-    int sum_remain_value = 0;
+    fprintf(stderr, "# ship_capacity %d\n", ship_capacity);
+    fprintf(stderr, "# tot_obj_value %d\n", tot_obj_value);
+    int sum_remain_value = 0, sum_tot_value = 0, sum_loads_value = 0;
     for (int i = 0; i < berth_num; ++i) {
         fprintf(stderr, "#BERTH%d: remain value:%d, tot value:%d, tot stock %d, remain stock %d\n", i, berths[i].remain_value, berths[i].tot_value, berths[i].tot_stock, berths[i].stock);
         sum_remain_value += berths[i].remain_value;
+        sum_tot_value += berths[i].tot_value;
     }
+    for (int i = 0; i < ship_num; ++i) {
+        sum_loads_value += ships[i].loads_value;
+    }
+    fprintf(stderr, "score: %d\n", tot_score);
+    fprintf(stderr, "berth total_value:%d\n", sum_tot_value);
+    fprintf(stderr, "ship_remain_value:%d\n", sum_loads_value);
     fprintf(stderr, "sum remain_value:%d\n\n", sum_remain_value);
+
 
     clock_t t02 = clock();
     t_tot = my_difftime(t02, t00);

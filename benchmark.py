@@ -10,7 +10,7 @@ import threading
 # os.system('make .')
 # os.chdir('../mac')
 
-os.chdir('./mac')
+os.chdir('./MacOSRelease')
 
 iters = 10
 
@@ -34,24 +34,18 @@ for i in tqdm(range(iters//2), desc="iter"):
     t1.start()
     t2 = threading.Thread(target=fun, args=[2])
     t2.start()
-    t3 = threading.Thread(target=fun, args=[3])
-    t3.start()
     t4 = threading.Thread(target=fun, args=[1])
     t4.start()
     t5 = threading.Thread(target=fun, args=[2])
     t5.start()
-    t6 = threading.Thread(target=fun, args=[3])
-    t6.start()
 
     t1.join()
     t2.join()
-    t3.join()
     t4.join()
     t5.join()
-    t6.join()
 
 
-for i in range(1, 4):
+for i in range(1, 3):
     s[i] = np.array(s[i])
     print(f"map{i}: ave:{s[i].mean()} max:{s[i].max()} min:{s[i].min()}")
 

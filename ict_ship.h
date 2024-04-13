@@ -12,7 +12,7 @@
 
 
 enum ship_strategy { SHIP_VALUE_BY_DIS, SHIP_STOCK_BY_DIS, SHIP_VALUE, SHIP_STOCK, SHIP_DIS, SHIP_CSCAN, SHIP_VALUE_BY_DIS2, SHIP_VALUE_BY_DIS3 };
-#define SHIP_STRATEGY SHIP_VALUE_BY_DIS3
+ship_strategy SHIP_STRATEGY = SHIP_VALUE_BY_DIS3;
 /*
  * benchmark:
  * robot: 13, ship: 1
@@ -269,16 +269,18 @@ void init_sea_map() {
 }
 
 int ship_capacity;
+int tot_score = 0;
 
 class Ship {
+public:
     int id, frame;
-    int loads;
+    int loads, loads_value;
     ship_status status;
     bool recovering;
     int dest_berth, dest_offloads;
 
     BerthMap *seamap;
-public:
+
     Ship(int x, int y) : pd(Pos(x, y), 0), status(SHIP_AWAIT), dest_berth(-1), dest_offloads(-1), frame(1) {};
 
     void sync(int _frame, int _id, int _loads, Pos _p, int _dir, int _status) {
@@ -468,6 +470,7 @@ public:
 
             for (int i = 0; i < max2load; ++i) {
                 berths[dest_berth].remain_value -= berths[dest_berth].stocks.front();
+                loads_value += berths[dest_berth].stocks.front();
                 berths[dest_berth].stocks.pop();
             }
             berths[dest_berth].stock -= max2load;
@@ -483,6 +486,9 @@ public:
             }
             if (dest_berth != -1 && is_offload(pd.pos)) {
                 fprintf(stderr, "[ ship:%d ] arrive offload\n", id);
+                tot_score += loads_value;
+                loads_value = 0;
+                // loads clear by sync
                 status = SHIP_AWAIT;
                 think(); // 希望这里递归不会出事？
                 return;

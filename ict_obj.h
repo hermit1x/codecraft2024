@@ -33,6 +33,7 @@ void remove_outdated_obj(int frame_id) {
 #endif
 }
 
+int tot_obj_value = 0;
 void update_obj(int frame_id) {
     int k; // 变化物品数量
     scanf("%d", &k);
@@ -41,6 +42,7 @@ void update_obj(int frame_id) {
     for (int i = 0; i < k; ++i) {
         scanf("%d%d%d", &x, &y, &value);
         if (value == 0) {
+            mat[x][y].has_obj = false;
             std::vector<Obj>::iterator it = objs.begin();
             while (it != objs.end()) {
                 if (it->p.x == x && it->p.y == y) {
@@ -52,8 +54,17 @@ void update_obj(int frame_id) {
         }
         else {
             objs.emplace_back(x, y, value, frame_id);
+            mat[x][y].has_obj = true;
+            tot_obj_value += value;
         }
     }
+}
+
+int find_obj(const Pos &p) {
+    for (int i = 0; i < objs.size(); ++i) {
+        if (objs[i].p == p) return i;
+    }
+    return -1;
 }
 
 #endif //CODECRAFT2024_ICT_OBJ_H

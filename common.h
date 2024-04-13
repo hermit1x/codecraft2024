@@ -7,6 +7,8 @@
 
 const int INF = 0x3f3f3f3f;
 
+#define use_robot_type 1
+
 int want_robot_num = 20;
 int want_ship_num = 1;
 /*
