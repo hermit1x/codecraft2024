@@ -693,7 +693,7 @@ void test_buy_robot(int frame, int &money) {
     while (cnt < want_robot_num) {
         for (auto i : robotBirths) {
             if (money < 2000) break;
-            printf("lbot %d %d\n", i.poses[0].x, i.poses[0].y);
+            printf("lbot %d %d 0\n", i.poses[0].x, i.poses[0].y);
             money -= 2000;
             fprintf(stderr, "buy bot:%d (%d,%d), money_left:%d\n", cnt++, i.poses[0].x, i.poses[0].y, money);
             robots.push_back(Robot(i.poses[0].x, i.poses[0].y, robot_num++, 0, 0));

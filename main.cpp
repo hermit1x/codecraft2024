@@ -30,6 +30,17 @@ int tot_value = 0;
 void Init() {
     srand((unsigned int)time(NULL));
     init_map();
+    if (is_ship_buy(Pos(2, 2))) {
+        // map1
+        want_ship_num = 2;
+        want_robot_num = 14;
+    }
+    if (is_ship_buy(Pos(3, 22))) {
+        // map2
+        want_ship_num = 1;
+        want_robot_num = 20;
+    }
+
     init_berth();
     init_offload();
     init_robot_birth();

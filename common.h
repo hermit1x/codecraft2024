@@ -7,8 +7,17 @@
 
 const int INF = 0x3f3f3f3f;
 
-int want_robot_num = 18;
-int want_ship_num = 2;
+int want_robot_num = 20;
+int want_ship_num = 1;
+/*
+ * map1:14+2 90792
+ *      18+2 84572
+ *
+ * map2:15+1 55160
+ *      20+1 69563
+ *      25+1 60865
+ *      30+1 37856
+ */
 
 int berth_num = 0;
 int ship_num = 0;

@@ -5,7 +5,7 @@
 #ifndef CODECRAFT2024_ICT_SHIP_H
 #define CODECRAFT2024_ICT_SHIP_H
 
-#define DEBUG_SHIP
+//#define DEBUG_SHIP
 
 #include "common.h"
 #include "ict_berth.h"
@@ -394,9 +394,17 @@ public:
         if (frame >= 14500 && status != SHIP_TO_OFFLOAD) {
             dest_offloads = calc_best_offload();
             if (offloadmaps[dest_offloads].getdis(pd) + 10 > 15000 - frame) {
+                if (status == SHIP_IN_BERTH) {
+                    want_acts.push_back({SHIP_CMD_DEPT, PosDir(), 0});
+                }
                 status = SHIP_TO_OFFLOAD;
+                calc_path_to_offload();
+                fprintf(stderr, "[ final ][ ship:%d ] force offload\n", id);
                 return;
             }
+        }
+        if (frame >= 14500 && status == SHIP_TO_OFFLOAD) {
+            fprintf(stderr, "[ final:%5d ][ ship:%d ] dis to offload: %d\n", frame, id, offloadmaps[dest_offloads].getdis(pd));
         }
 #ifdef DEBUG_SHIP
         fprintf(stderr, "[%5d] [ship:%d] status: %s, to_berth:%d, to_offlaod:%d\n", frame, id, status_strs[status], dest_berth, dest_offloads);
@@ -438,7 +446,7 @@ public:
             }
             fprintf(stderr, "[%5d] ship:%d IN_BERTH, berth:%d, stock:%d, loads:%d\n", frame, id, dest_berth, berths[dest_berth].stock, loads);
             if (berths[dest_berth].stock == 0) {
-                if (rand() % 100 < 20) {
+                if (1 || rand() % 100 < 20) {
                     want_acts.push_back({SHIP_CMD_DEPT, PosDir(), 0});
                     status = SHIP_AWAIT;
 #ifdef DEBUG_SHIP
@@ -474,6 +482,7 @@ public:
                 calc_path_to_offload();
             }
             if (dest_berth != -1 && is_offload(pd.pos)) {
+                fprintf(stderr, "[ ship:%d ] arrive offload\n", id);
                 status = SHIP_AWAIT;
                 think(); // 希望这里递归不会出事？
                 return;
@@ -685,7 +694,7 @@ public:
     int calc_best_offload() {
         int mn_dis = INF, offload = rand() % offload_num;
         for (int i = 0; i < offload_num; ++i) {
-            fprintf(stderr, "[ offload:%d ] dis:%d\n", i, offloadmaps[i].getdis(pd));
+            fprintf(stderr, "[ %5d ][ offload:%d ] dis:%d\n", frame, i, offloadmaps[i].getdis(pd));
             if (mn_dis > offloadmaps[i].getdis(pd)) {
                 mn_dis = offloadmaps[i].getdis(pd);
                 offload = i;
@@ -817,17 +826,17 @@ void handle_conflict_ship() {
 //    }
 //    return;
 
-    fprintf(stderr, "[conflict] start\n");
+//    fprintf(stderr, "[conflict] start\n");
     for (int i = 0; i < 200; ++i) {
         for (int j = 0; j < 200; ++j) {
             ship_conflict_mat[i][j] = -1;
         }
     }
-    fprintf(stderr, "[conflict] mat clear finish\n");
+//    fprintf(stderr, "[conflict] mat clear finish\n");
     for (int i = 0; i < ship_num; ++i) {
         ship_conflict_occupy(ships[i].pd, i);
     }
-    fprintf(stderr, "[conflict] mat init finish\n");
+//    fprintf(stderr, "[conflict] mat init finish\n");
     ship_conflict_dfs(0);
 }
 
